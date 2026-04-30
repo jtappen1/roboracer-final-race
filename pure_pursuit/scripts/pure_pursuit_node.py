@@ -25,7 +25,7 @@ class PurePursuit(Node):
     This is just a template, you are free to implement your own node!
     """
     def __init__(self):
-        super().__init__('final_race_pure_pursuit_node')
+        super().__init__('pure_pursuit_node')
         self.odom_sub = self.create_subscription(
             Odometry,
             "/pf/pose/odom",
@@ -37,7 +37,7 @@ class PurePursuit(Node):
             "/drive",
             10
         )
-        pkg_path = get_package_share_directory('final_race_pure_pursuit')
+        pkg_path = get_package_share_directory('pure_pursuit')
         yaml_path = os.path.join(pkg_path, 'config', 'pure_pursuit.yaml')
         self.declare_parameter('yaml_path', yaml_path)
         yaml_path = self.get_parameter('yaml_path').value
@@ -59,13 +59,13 @@ class PurePursuit(Node):
 
         self.waypoint_marker_pub = self.create_publisher(
             MarkerArray,
-            "/final_race_pure_pursuit/waypoint_markers",
+            "/pure_pursuit/waypoint_markers",
             10
         )
 
         self.goal_marker_pub = self.create_publisher(
             MarkerArray,
-            "/final_race_pure_pursuit/goal_marker",
+            "/pure_pursuit/goal_marker",
             10
         )
         
@@ -107,7 +107,7 @@ class PurePursuit(Node):
         marker = Marker()
         marker.header.frame_id = "map"
         marker.header.stamp = self.get_clock().now().to_msg()
-        marker.ns = "final_race_pure_pursuit_goal"
+        marker.ns = "pure_pursuit_goal"
         marker.id = 0
         marker.type = Marker.SPHERE
         marker.action = Marker.ADD

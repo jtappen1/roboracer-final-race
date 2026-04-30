@@ -56,10 +56,10 @@ using KDTree = nanoflann::KDTreeSingleIndexAdaptor<
 
 class PurePursuit : public rclcpp::Node {
 public:
-    PurePursuit() : Node("final_race_pure_pursuit_node") {
+    PurePursuit() : Node("pure_pursuit_node") {
 
         // ── load waypoints ──────────────────────────────────────
-        this->declare_parameter<std::string>("waypoints_path", "/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/reliable_race_2_wp.csv");
+        this->declare_parameter<std::string>("waypoints_path", "/home/qing/roboracer_ws/src/roboracer-final-race/pure_pursuit/path/waypoints.csv");
         const auto wp_path = this->get_parameter("waypoints_path").as_string();
         load_waypoints(wp_path);
 
@@ -79,12 +79,12 @@ public:
 
         // Visualisation (low-priority, 2 Hz)
         marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-            "/final_race_pure_pursuit/waypoint_markers", rclcpp::ServicesQoS());
+            "/pure_pursuit/waypoint_markers", rclcpp::ServicesQoS());
         vis_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(500), [this](){ publish_waypoints(); });
 
         goal_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-            "/final_race_pure_pursuit/goal_marker", rclcpp::ServicesQoS());
+            "/pure_pursuit/goal_marker", rclcpp::ServicesQoS());
 
         RCLCPP_INFO(get_logger(), "PurePursuit ready — %zu waypoints", waypoints_.size());
     }

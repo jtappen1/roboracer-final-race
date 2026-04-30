@@ -15,7 +15,7 @@ from nav_msgs.msg import Odometry
 class CollectWaypoints(Node):
 
     def __init__(self):
-        super().__init__('final_race_collect_waypoints')
+        super().__init__('collect_waypoints')
 
         self.clicked_points_sub = self.create_subscription(
             PointStamped,
@@ -25,7 +25,7 @@ class CollectWaypoints(Node):
         )
         self.marker_pub = self.create_publisher(
             Marker, 
-            "/final_race_pure_pursuit/collect_waypoint_markers",
+            "/waypoint_markers", 
             10
         )
         self.odom_sub = self.create_subscription(
@@ -124,11 +124,11 @@ class CollectWaypoints(Node):
             # u_fine = np.linspace(0, 1, 200)
             # x_fine, y_fine = splev(u_fine, tck)
 
-            with open('obs_rrt_sim.csv', 'w', newline='') as f:
+            with open('spline_points.csv', 'w', newline='') as f:
                 writer = csv.writer(f)
                 for xi, yi in zip(x, y):
                     writer.writerow([xi, yi])
-            self.get_logger().info(f"Spline generated and saved to obs_rrt_sim.csv")
+            self.get_logger().info(f"Spline generated and saved to spline_points.csv")
 
         rclpy.shutdown()
         sys.exit(0)

@@ -32,4 +32,4 @@ Window 5:
 cd ros2_ws
 source  /opt/ros/humble/setup.bash
 source install/setup.bash 
-ros2 run pure_pursuit pure_pursuit
+ros2 run final_race_pure_pursuit final_race_pure_pursuit_node
