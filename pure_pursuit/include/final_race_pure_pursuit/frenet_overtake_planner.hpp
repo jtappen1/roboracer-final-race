@@ -37,7 +37,7 @@ struct OvertakePlannerConfig {
   double uncertainty_base_d = 0.08;
   double uncertainty_growth_s = 0.08;
   double uncertainty_growth_d = 0.03;
-  double wall_buffer = 0.32;
+  double wall_buffer = 0.3;
   double overtaking_speed_gain = 0.25;
   double min_overtake_speed_delta = 0.05;
   double planning_time = 7.0;

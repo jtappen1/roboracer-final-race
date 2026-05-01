@@ -11,4 +11,4 @@ planning_dt: 0.1
 max_speed: 5.0
 # Allow the local overtake/follow planner to slow down below race pace.
 min_speed: 0.0
-track_half_width: 0.85
+track_half_width: 0.7
