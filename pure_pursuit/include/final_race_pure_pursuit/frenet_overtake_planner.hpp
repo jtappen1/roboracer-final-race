@@ -22,7 +22,7 @@ struct OvertakePlannerConfig {
   double dt = 0.1;
   double max_speed = 0.0;
   double min_speed = 0.0;
-  double track_half_width = 0.85;
+  double track_half_width = 0.7;
   double vehicle_half_width = 0.18;
   double obstacle_radius = 0.22;
   double activation_lookahead = 7.0;
@@ -37,7 +37,7 @@ struct OvertakePlannerConfig {
   double uncertainty_base_d = 0.08;
   double uncertainty_growth_s = 0.08;
   double uncertainty_growth_d = 0.03;
-  double wall_buffer = 0.16;
+  double wall_buffer = 0.32;
   double overtaking_speed_gain = 0.25;
   double min_overtake_speed_delta = 0.05;
   double planning_time = 7.0;
@@ -47,7 +47,7 @@ struct OvertakePlannerConfig {
   int temporal_points = 6;
   double collision_penalty = 1.0e6;
   double clearance_weight = 4.0;
-  double wall_weight = 20.0;
+  double wall_weight = 30.0;
   double smooth_weight = 1.0;
   double efficiency_weight = 3.0;
   double rejoin_weight = 14.0;
