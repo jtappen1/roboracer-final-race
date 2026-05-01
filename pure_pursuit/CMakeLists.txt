@@ -67,6 +67,7 @@ install(PROGRAMS
   scripts/pure_pursuit_node.py
   scripts/collect_waypoints.py
   scripts/obstacle_detector.py
+  scripts/lane_switcher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

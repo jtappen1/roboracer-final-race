@@ -16,6 +16,8 @@ from geometry_msgs.msg import PointStamped
 from tf2_geometry_msgs import do_transform_point
 from tf_transformations import euler_from_quaternion
 from visualization_msgs.msg import MarkerArray, Marker
+from geometry_msgs.msg import PoseArray
+
 
 # TODO CHECK: include needed ROS msg type headers and libraries
 
@@ -38,8 +40,17 @@ class PurePursuit(Node):
             10
         )
       
-        self.waypoints = np.array(self.get_waypoints("/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv"))
+        self.waypoints = np.array(self.get_waypoints(
+            "/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv"
+        ))
 
+        # Subscribe to active lane — lane_switcher_node will update this
+        self.lane_sub = self.create_subscription(
+            PoseArray,
+            '/planning/active_lane',
+            self._active_lane_callback,
+            10
+        )
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
@@ -64,7 +75,7 @@ class PurePursuit(Node):
         # Parameters
         self.wheelbase = 0.3
         self.lookahead = 1.5
-        self.velocity = 2.0 
+        self.velocity = 3.5 
     
     def publish_waypoints(self):
         marker_array = MarkerArray()
@@ -87,6 +98,12 @@ class PurePursuit(Node):
             marker.id = i
             marker_array.markers.append(marker)
         self.waypoint_marker_pub.publish(marker_array)
+    
+    def _active_lane_callback(self, msg: PoseArray):
+        if msg.poses:
+            self.waypoints = np.array(
+                [[p.position.x, p.position.y] for p in msg.poses]
+            )   
 
     def publish_goal_marker(self, goal_world: np.ndarray):
         marker = Marker()
