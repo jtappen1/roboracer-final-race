@@ -30,7 +30,7 @@
 static constexpr double WHEELBASE      = 0.33;
 static constexpr double L_MIN          = 0.5;
 static constexpr double L_MAX          = 3.0;
-static constexpr double V_MIN          = 3;
+static constexpr double V_MIN          = 2.0;
 static constexpr double V_MAX          = 5.0;
 static constexpr double LOOKAHEAD_GAIN = 1.0;   // scales v_norm → lookahead
 // static constexpr double MAX_STEER_RAD  = 0.698; // 40 degrees
@@ -70,7 +70,7 @@ public:
     PurePursuit() : Node("pure_pursuit_node") {
 
         // ── load waypoints ──────────────────────────────────────
-        this->declare_parameter<std::string>("waypoints_path", "path/waypoints.csv");
+        this->declare_parameter<std::string>("waypoints_path", "path/waypoints_optimized_traj.csv");
         const auto wp_path = resolve_waypoints_path(
             this->get_parameter("waypoints_path").as_string());
         load_waypoints(wp_path);
@@ -185,6 +185,19 @@ private:
     }
 
     // ── waypoint loading ────────────────────────────────────────
+    //   Auto-detects the column layout from the first non-comment line:
+    //     • 7 cols, ';' delimited → optimized trajectory format
+    //         (s_m; x_m; y_m; psi_rad; kappa_radpm; vx_mps; ax_mps2)
+    //         — x/y come from cols 1/2 and velocity from col 5; the
+    //           per-waypoint lookahead is synthesised from the velocity
+    //           profile since the trajectory file does not carry one.
+    //     • 4 cols, ',' delimited → legacy (x, y, lookahead, velocity)
+    //     • 3 cols, ',' delimited → older (x, y, velocity); lookahead
+    //                                synthesised from velocity.
+    //   The lookahead synthesis mirrors the python pursuit:
+    //       v_norm = (v - V_MIN) / (V_MAX - V_MIN)
+    //       l = clamp(v_norm * L_MAX, L_MIN, L_MAX)
+    //   so corners (low v) get a short lookahead and straights get long.
     void load_waypoints(const std::string& path) {
         std::ifstream f(path);
         if (!f.is_open())
@@ -192,16 +205,61 @@ private:
 
         waypoints_.reserve(4096);
         std::string line;
-        while (std::getline(f, line)) {
-            if (line.empty() || line[0] == '#') continue;  // skip comments
-            if (line.empty()) continue;
-            std::istringstream ss(line);
+        char delim = ',';
+        int  cols  = 0;
+
+        auto split = [](const std::string& s, char d) {
+            std::vector<std::string> out;
+            std::stringstream ss(s);
             std::string tok;
+            while (std::getline(ss, tok, d)) out.push_back(tok);
+            return out;
+        };
+
+        auto synth_lookahead = [](float v) {
+            const float v_norm = (v - static_cast<float>(V_MIN)) /
+                                 static_cast<float>(V_MAX - V_MIN + 1e-6);
+            const float raw    = v_norm * static_cast<float>(L_MAX);
+            return std::max(static_cast<float>(L_MIN),
+                            std::min(static_cast<float>(L_MAX), raw));
+        };
+
+        while (std::getline(f, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty() || line[0] == '#') continue;  // skip comments and blanks
+
+            // First data row: pick the delimiter & remember column count.
+            if (cols == 0) {
+                delim = (line.find(';') != std::string::npos) ? ';' : ',';
+                cols  = static_cast<int>(split(line, delim).size());
+                RCLCPP_INFO(get_logger(),
+                            "Waypoint format: %d cols, delim='%c'",
+                            cols, delim);
+            }
+
+            const auto fields = split(line, delim);
             Waypoint wp{};
-            if (std::getline(ss, tok, ',')) wp.x = std::stof(tok);
-            if (std::getline(ss, tok, ',')) wp.y = std::stof(tok);
-            if (std::getline(ss, tok, ',')) wp.l = std::stof(tok);
-            if (std::getline(ss, tok, ',')) wp.v = std::stof(tok);
+            if (cols >= 7 && delim == ';' && fields.size() >= 6) {
+                // Optimized trajectory: s; x; y; psi; kappa; vx; ax
+                wp.x = std::stof(fields[1]);
+                wp.y = std::stof(fields[2]);
+                wp.v = std::stof(fields[5]);
+                wp.l = synth_lookahead(wp.v);
+            } else if (cols >= 4 && fields.size() >= 4) {
+                // Legacy: x, y, lookahead, velocity
+                wp.x = std::stof(fields[0]);
+                wp.y = std::stof(fields[1]);
+                wp.l = std::stof(fields[2]);
+                wp.v = std::stof(fields[3]);
+            } else if (cols >= 3 && fields.size() >= 3) {
+                // Older: x, y, velocity (no lookahead column)
+                wp.x = std::stof(fields[0]);
+                wp.y = std::stof(fields[1]);
+                wp.v = std::stof(fields[2]);
+                wp.l = synth_lookahead(wp.v);
+            } else {
+                continue;  // skip malformed rows
+            }
             waypoints_.push_back(wp);
         }
         RCLCPP_INFO(get_logger(), "Loaded %zu waypoints from %s",
