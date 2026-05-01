@@ -28,7 +28,7 @@ class PurePursuit(Node):
         super().__init__('pure_pursuit_node')
         self.odom_sub = self.create_subscription(
             Odometry,
-            "/pf/pose/odom",
+            "/ego_racecar/odom",
             self.pose_callback,
             10
         )
@@ -37,35 +37,24 @@ class PurePursuit(Node):
             "/drive",
             10
         )
-        pkg_path = get_package_share_directory('pure_pursuit')
-        yaml_path = os.path.join(pkg_path, 'config', 'pure_pursuit.yaml')
-        self.declare_parameter('yaml_path', yaml_path)
-        yaml_path = self.get_parameter('yaml_path').value
-        with open(yaml_path, 'r') as f:
-            config = yaml.safe_load(f)
-
-        wp_rel = config['waypoints_path']
-
-        waypoints_path = os.path.join(pkg_path, config['waypoints_path'])
-        self.waypoints = np.array(self.get_waypoints(waypoints_path))
-
-        self.lookahead = config['lookahead']
+      
+        self.waypoints = np.array(self.get_waypoints("/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv"))
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.source_frame = 'map'
-        self.target_frame = 'laser'
+        self.target_frame = 'ego_racecar/base_link'
 
         self.waypoint_marker_pub = self.create_publisher(
             MarkerArray,
-            "/pure_pursuit/waypoint_markers",
+            "ego/pure_pursuit/waypoint_markers",
             10
         )
 
         self.goal_marker_pub = self.create_publisher(
             MarkerArray,
-            "/pure_pursuit/goal_marker",
+            "ego/pure_pursuit/goal_marker",
             10
         )
         
@@ -73,11 +62,9 @@ class PurePursuit(Node):
         self.timer = self.create_timer(0.5, self.publish_waypoints)  # 2 Hz 
 
         # Parameters
-        self.wheelbase = 0.15 
-        self.L_min = 1.5
-        self.L_max = 3.0 
-        self.v_min = 2.5
-        self.v_max = 4.0     
+        self.wheelbase = 0.3
+        self.lookahead = 1.5
+        self.velocity = 2.0 
     
     def publish_waypoints(self):
         marker_array = MarkerArray()
@@ -89,14 +76,12 @@ class PurePursuit(Node):
             marker.action = Marker.ADD
             marker.pose.position.x = wp[0]
             marker.pose.position.y = wp[1]
-            velocity = wp[2]
-            v_norm = (velocity - self.v_min) / (self.v_max - self.v_min + 1e-6)
             marker.pose.position.z = 0.1
             marker.scale.x = 0.2
             marker.scale.y = 0.2
             marker.scale.z = 0.2
-            marker.color.r = v_norm
-            marker.color.g = 1.0 - v_norm
+            marker.color.r = 1.0
+            marker.color.g = 0.0
             marker.color.b = 0.0
             marker.color.a = 1.0
             marker.id = i
@@ -162,7 +147,7 @@ class PurePursuit(Node):
         with open(csv_path, 'r') as f:
             reader = csv.reader(f)
             for row in reader:
-                waypoints.append((float(row[0]), float(row[1]), float(row[2])))
+                waypoints.append((float(row[0]), float(row[1])))
         print(f"Loaded {len(waypoints)} sets of waypoints")
         return waypoints
     
@@ -213,26 +198,19 @@ class PurePursuit(Node):
         delta = self.waypoints[:, :2] - world_coords
         dist = np.linalg.norm(delta, axis=1)
         closest_idx = np.argmin(dist)
-        velocity = self.waypoints[closest_idx, 2]
-        
-        # TODO: Change this, pretty much normalizes to 0 or 1.0, will be useful when we have adaptive/smoother velocity
-        v_norm = (velocity - self.v_min) / (self.v_max - self.v_min + 1e-6)
-
-        lookahead = (v_norm) * self.lookahead
-        lookahead = np.clip(lookahead, self.L_min, self.L_max)
         
         # Computes goal world and local coordinates
-        goal_world = self.compute_lookahead_pt(world_coords, yaw, lookahead)
+        goal_world = self.compute_lookahead_pt(world_coords, yaw, self.lookahead)
         goal_local = self.map_to_base(goal_world)
         if goal_local is None:
             return 
 
         # Calculate Steering Angle
-        curvature = 2 * goal_local[1] / (lookahead**2)
+        curvature = 2 * goal_local[1] / (self.lookahead**2)
         steering_angle = np.arctan(self.wheelbase * curvature)
 
         # Clip the max steering angle
-        MAX_STEERING = np.radians(40)
+        MAX_STEERING = np.radians(80)
         steering_angle = np.clip(steering_angle, -MAX_STEERING, MAX_STEERING)
 
         self.publish_goal_marker(goal_world)
@@ -240,7 +218,7 @@ class PurePursuit(Node):
         drive_msg = AckermannDriveStamped()
         drive_msg.header.stamp = self.get_clock().now().to_msg()
         drive_msg.drive.steering_angle = steering_angle
-        drive_msg.drive.speed = velocity
+        drive_msg.drive.speed = self.velocity
 
         self.drive_pub.publish(drive_msg)
 

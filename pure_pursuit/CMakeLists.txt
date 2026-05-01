@@ -31,7 +31,6 @@ foreach(PACKAGE
   tf2_ros)
 
   find_package(${PACKAGE} REQUIRED)
-
 endforeach()
 
 # Include Cpp "include" directory
@@ -40,17 +39,25 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
 )
 
-# Create Cpp executable
+# Create Cpp executables (Fixed: separated into distinct targets)
 add_executable(final_race_pure_pursuit_node src/pure_pursuit_node.cpp)
+add_executable(object_detector_node src/object_detector.cpp)
 
+# Link dependencies to their respective targets
 ament_target_dependencies(final_race_pure_pursuit_node
+  rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
+)
+
+ament_target_dependencies(object_detector_node
   rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
 )
 
 # Install Cpp executables
 install(TARGETS
   final_race_pure_pursuit_node
-  DESTINATION lib/${PROJECT_NAME})
+  object_detector_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
@@ -59,33 +66,31 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/pure_pursuit_node.py
   scripts/collect_waypoints.py
+  scripts/obstacle_detector.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# install config files
+# Install config files
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install path files
 install(DIRECTORY path
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Apply include directories to both nodes
 target_include_directories(final_race_pure_pursuit_node PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_include_directories(object_detector_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # uncomment the line when a copyright and license is not present in all source files
-  #set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # uncomment the line when this package is not in a git repo
-  #set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
-
 
 ament_package()
