@@ -1,2 +1,14 @@
 waypoints_path: 'path/track_2_v1.csv'
 lookahead: 3.0
+
+# Frenet overtake planner integration
+enable_overtaking: true
+obstacle_topic: '/overtake/tracked_obstacles'
+initialpose_topic: '/initialpose'
+global_frame: 'map'
+horizon_steps: 10
+planning_dt: 0.1
+max_speed: 5.0
+# Allow the local overtake/follow planner to slow down below race pace.
+min_speed: 0.0
+track_half_width: 0.85

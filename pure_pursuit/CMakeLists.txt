@@ -16,11 +16,12 @@ if(NOT nanoflann_FOUND)
 endif()
 
 # Find dependencies
-foreach(PACKAGE 
-  ament_cmake 
+foreach(PACKAGE
+  ament_cmake
   ament_cmake_python
+  ament_index_cpp
   rclcpp
-  rclpy 
+  rclpy
   geometry_msgs
   nav_msgs
   ackermann_msgs
@@ -28,7 +29,8 @@ foreach(PACKAGE
   std_msgs
   visualization_msgs
   Eigen3
-  tf2_ros)
+  tf2_ros
+  overtake_msgs)
 
   find_package(${PACKAGE} REQUIRED)
 
@@ -41,15 +43,29 @@ include_directories(
 )
 
 # Create Cpp executable
-add_executable(final_race_pure_pursuit_node src/pure_pursuit_node.cpp)
+add_executable(final_race_pure_pursuit_node
+  src/pure_pursuit_node.cpp
+  src/frenet_overtake_planner.cpp
+  src/frenet_utils.cpp
+  src/utils.cpp)
 
 ament_target_dependencies(final_race_pure_pursuit_node
-  rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
+  rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros overtake_msgs ament_index_cpp
+)
+
+# Optional: build the slow obstacle simulator alongside (sim-only).
+add_executable(final_race_slow_obstacle_node
+  src/slow_dynamic_obstacle_node.cpp
+  src/frenet_utils.cpp
+  src/utils.cpp)
+ament_target_dependencies(final_race_slow_obstacle_node
+  rclcpp geometry_msgs nav_msgs visualization_msgs overtake_msgs
 )
 
 # Install Cpp executables
 install(TARGETS
   final_race_pure_pursuit_node
+  final_race_slow_obstacle_node
   DESTINATION lib/${PROJECT_NAME})
 
 # Install Python modules
