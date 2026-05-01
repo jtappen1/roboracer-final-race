@@ -35,7 +35,7 @@ class LidarObstacleNode(Node):
         # ── Parameters ──────────────────────────────────────────────────────
         self.declare_parameter('scan_topic',          '/scan')
         self.declare_parameter('map_frame',           'map')
-        self.declare_parameter('obstacle_radius',     0.3)    # sphere radius for visualisation (m)
+        self.declare_parameter('obstacle_radius',     0.5)    # sphere radius for visualisation (m)
 
         # Scan filtering
         self.declare_parameter('min_range',           0.0)   # ignore returns closer than this (m)
@@ -44,15 +44,15 @@ class LidarObstacleNode(Node):
 
         # Gap segmentation
         self.declare_parameter('gap_threshold',       0.2)   # >10cm between adjacent pts = new segment
-        self.declare_parameter('min_segment_points',  20)      # ignore tiny noise segments
-        self.declare_parameter('max_segment_points',  40)     # ignore large wall segments
+        self.declare_parameter('min_segment_points',  10)      # ignore tiny noise segments
+        self.declare_parameter('max_segment_points',  100)     # ignore large wall segments
         
         # Distance-based threshold parameters
-        self.declare_parameter('max_extended_segment_points', 80) # max points allowed at close range
-        self.declare_parameter('max_distance',                2.0) # max distance for scaling
+        self.declare_parameter('max_extended_segment_points', 200) # max points allowed at close range
+        self.declare_parameter('max_distance',                3.0) # max distance for scaling
 
         # Centerline filter
-        self.declare_parameter('waypoints_csv',       '/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv')
+        self.declare_parameter('waypoints_csv', '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv')
         self.declare_parameter('max_centerline_dist', 0.5)    # reject centroids further than this (m)
 
         scan_topic               = self.get_parameter('scan_topic').value

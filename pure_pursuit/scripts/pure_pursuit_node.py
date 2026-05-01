@@ -30,7 +30,7 @@ class PurePursuit(Node):
         super().__init__('pure_pursuit_node')
         self.odom_sub = self.create_subscription(
             Odometry,
-            "/ego_racecar/odom",
+            "pf/pose/odom",
             self.pose_callback,
             10
         )
@@ -41,7 +41,7 @@ class PurePursuit(Node):
         )
       
         self.waypoints = np.array(self.get_waypoints(
-            "/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv"
+            "/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv"
         ))
 
         # Subscribe to active lane — lane_switcher_node will update this
@@ -55,7 +55,7 @@ class PurePursuit(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.source_frame = 'map'
-        self.target_frame = 'ego_racecar/base_link'
+        self.target_frame = 'laser'
 
         self.waypoint_marker_pub = self.create_publisher(
             MarkerArray,
@@ -75,7 +75,7 @@ class PurePursuit(Node):
         # Parameters
         self.wheelbase = 0.3
         self.lookahead = 1.5
-        self.velocity = 3.5 
+        self.velocity = 2.0 
     
     def publish_waypoints(self):
         marker_array = MarkerArray()

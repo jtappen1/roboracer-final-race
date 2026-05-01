@@ -47,15 +47,15 @@ class LaneSwitcherNode(Node):
 
         # ── Parameters ──────────────────────────────────────────────────────
         self.declare_parameter('waypoints_csv',
-            '/home/jtappen/roboracer_ws/src/final-race/pure_pursuit/path/levine_2floor_points.csv')
+            '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv')
         self.declare_parameter('map_frame',             'map')
-        self.declare_parameter('lane_offset',           0.35)   # m, lateral shift per lane
+        self.declare_parameter('lane_offset',           0.5)   # m, lateral shift per lane
         self.declare_parameter('blocking_radius',       0.3)  # m, obstacle-to-waypoint dist = blocked
         self.declare_parameter('lookahead_window_dist', 3.0)   # m, how far ahead to scan for obstacles
         self.declare_parameter('min_publish_dist',      2.0)   # m, minimum path length published
-        self.declare_parameter('clear_confirm_count',   240)    # scans center must be clear before returning
+        self.declare_parameter('clear_confirm_count',   30)    # scans center must be clear before returning
         self.declare_parameter('obstacles_topic',       '/obstacles/centroids')
-        self.declare_parameter('odom_topic',            '/ego_racecar/odom')
+        self.declare_parameter('odom_topic',            '/pf/pose/odom')
 
 
         waypoints_csv              = self.get_parameter('waypoints_csv').value
