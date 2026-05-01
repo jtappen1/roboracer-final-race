@@ -2,6 +2,8 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+//safety_supervisor.hpp
+#include "final_race_pure_pursuit/safety_supervisor.hpp"
 
 #include <nanoflann.hpp>
 
@@ -136,6 +138,17 @@ public:
             "/pure_pursuit/goal_marker", rclcpp::ServicesQoS());
 
         RCLCPP_INFO(get_logger(), "PurePursuit ready — %zu waypoints", waypoints_.size());
+
+        //safety supervisor parameters
+        safety_supervisor_.setParams(
+            0.25,   // ego_radius
+            0.10,   // margin
+            0.5,    // emergency_ttc
+            0.20,   // emergency_distance
+            2.0,    // slow_ttc
+            1.0,    // slow_distance
+            2.0     // stop_hold_time
+        );
     }
 
 private:
@@ -144,6 +157,10 @@ private:
 
     std::unique_ptr<WaypointCloud> cloud_;
     std::unique_ptr<KDTree>        kdtree_;
+
+    // Safety supervisor
+    mpc::SafetySupervisor safety_supervisor_;
+    std::vector<mpc::ObstacleSafetyState> latest_safety_obstacles_;
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
@@ -245,6 +262,20 @@ private:
         const double stamp_sec = static_cast<double>(msg->header.stamp.sec) +
                                  static_cast<double>(msg->header.stamp.nanosec) * 1e-9;
         planner_->updateObstacles(*msg, stamp_sec);
+
+        // Update safety supervisor with latest obstacles
+        latest_safety_obstacles_.clear();
+        for (const auto& obs : msg->obstacles) {
+            mpc::ObstacleSafetyState state;
+            state.id = obs.id;
+            state.x = obs.pose.position.x;
+            state.y = obs.pose.position.y;
+            state.vx = obs.velocity.x;
+            state.vy = obs.velocity.y;
+            state.radius = obs.radius > 0.0 ? obs.radius : 0.1; // default radius
+            latest_safety_obstacles_.push_back(state);  
+        }
+
     }
 
     // ── fast nearest-waypoint (ahead of car) via KD-tree ────────
@@ -462,6 +493,7 @@ private:
         //    is no real reason to deviate from the raceline.
         std::array<float, 2> goal_world = compute_lookahead_pt(start_idx, lookahead);
 
+        bool planner_failed = false;
         if (enable_overtaking_ && planner_) {
             // Ego speed: forward component of body-frame twist (gym/odom convention)
             const double ego_speed =
@@ -479,6 +511,7 @@ private:
             const auto plan_result = planner_->plan(state, nominal_ref_path);
             const Eigen::MatrixXd& ref_path = plan_result.first;
             const mpc::PlanInfo&   info     = plan_result.second;
+            planner_failed = (info.reason == "fallback")&&(!latest_safety_obstacles_.empty());
 
             const bool obstacle_active =
                 (info.mode == "overtake" || info.mode == "follow");
@@ -521,6 +554,36 @@ private:
         // steering_angle = std::clamp(steering_angle,
         //                             -static_cast<float>(MAX_STEER_RAD),
         //                              static_cast<float>(MAX_STEER_RAD));
+
+        // Safety supervisor override check
+        mpc::EgoSafetyState ego;
+        ego.x=cx; ego.y=cy; ego.yaw=yaw; 
+        ego.speed = std::abs(static_cast<double>(msg->twist.twist.linear.x));
+
+        const double now_sec = this->now().seconds();
+
+        const auto safety = safety_supervisor_.evaluate(
+            ego,
+            latest_safety_obstacles_,
+            now_sec,
+            planner_failed
+        );
+
+        if (safety.action == mpc::SafetyAction::STOP) {
+            velocity = 0.0f;
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 500,
+                "SAFETY STOP | obs=%d | dist=%.2f | ttc=%.2f | %s",
+                safety.obstacle_id, safety.min_distance, safety.ttc,
+                safety.reason.c_str());
+        } else if (safety.action == mpc::SafetyAction::SLOW_DOWN) {
+            velocity = std::min(velocity, static_cast<float>(safety.target_speed));
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 500,
+                "SAFETY SLOW | obs=%d | dist=%.2f | ttc=%.2f | target=%.2f",
+                safety.obstacle_id, safety.min_distance, safety.ttc,
+                safety.target_speed);
+        }
 
         // 7. Publish drive command
         ackermann_msgs::msg::AckermannDriveStamped drive_msg;

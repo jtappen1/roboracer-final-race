@@ -47,7 +47,8 @@ add_executable(final_race_pure_pursuit_node
   src/pure_pursuit_node.cpp
   src/frenet_overtake_planner.cpp
   src/frenet_utils.cpp
-  src/utils.cpp)
+  src/utils.cpp
+  src/safety_supervisor.cpp)
 
 ament_target_dependencies(final_race_pure_pursuit_node
   rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros overtake_msgs ament_index_cpp
