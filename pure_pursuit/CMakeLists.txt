@@ -10,6 +10,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+
 find_package(nanoflann QUIET)
 if(NOT nanoflann_FOUND)
   message(STATUS "nanoflann not found via cmake — assuming nanoflann.hpp is local")

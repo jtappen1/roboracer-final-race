@@ -52,7 +52,7 @@ class LidarObstacleNode(Node):
         self.declare_parameter('max_distance',                3.0) # max distance for scaling
 
         # Centerline filter
-        self.declare_parameter('waypoints_csv', '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv')
+        self.declare_parameter('waypoints_csv', '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/traj_race_cl.csv')
         self.declare_parameter('max_centerline_dist', 0.5)    # reject centroids further than this (m)
 
         scan_topic               = self.get_parameter('scan_topic').value
@@ -215,7 +215,7 @@ class LidarObstacleNode(Node):
                 for row in csv.reader(f):
                     if len(row) >= 2:
                         try:
-                            pts.append([float(row[0]), float(row[1])])
+                            pts.append([float(row[1]), float(row[2])])
                         except ValueError:
                             pass  # skip header
             if not pts:

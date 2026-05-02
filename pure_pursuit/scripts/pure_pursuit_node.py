@@ -41,7 +41,7 @@ class PurePursuit(Node):
         )
       
         self.waypoints = np.array(self.get_waypoints(
-            "/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv"
+            "/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/waypoints_xinyi1.csv"
         ))
 
         # Subscribe to active lane — lane_switcher_node will update this

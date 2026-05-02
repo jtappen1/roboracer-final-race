@@ -47,7 +47,7 @@ class LaneSwitcherNode(Node):
 
         # ── Parameters ──────────────────────────────────────────────────────
         self.declare_parameter('waypoints_csv',
-            '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/final_race.csv')
+            '/home/nvidia/ros2_ws/src/roboracer-final-race/pure_pursuit/path/traj_race_cl.csv')
         self.declare_parameter('map_frame',             'map')
         self.declare_parameter('lane_offset',           0.5)   # m, lateral shift per lane
         self.declare_parameter('blocking_radius',       0.3)  # m, obstacle-to-waypoint dist = blocked
@@ -268,7 +268,7 @@ class LaneSwitcherNode(Node):
                 for row in csv.reader(f):
                     if len(row) >= 2:
                         try:
-                            pts.append([float(row[0]), float(row[1])])
+                            pts.append([float(row[1]), float(row[2])])
                         except ValueError:
                             pass
             if not pts:
