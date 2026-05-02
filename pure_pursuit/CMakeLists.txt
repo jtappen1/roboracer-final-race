@@ -43,9 +43,14 @@ include_directories(
 # Create Cpp executables (Fixed: separated into distinct targets)
 add_executable(final_race_pure_pursuit_node src/pure_pursuit_node.cpp)
 add_executable(object_detector_node src/object_detector.cpp)
+add_executable(pure_pursuit_zones src/pure_pursuit_zones.cpp)
+
 
 # Link dependencies to their respective targets
 ament_target_dependencies(final_race_pure_pursuit_node
+  rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
+)
+ament_target_dependencies(pure_pursuit_zones
   rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
 )
 
@@ -57,6 +62,7 @@ ament_target_dependencies(object_detector_node
 install(TARGETS
   final_race_pure_pursuit_node
   object_detector_node
+  pure_pursuit_zones
   DESTINATION lib/${PROJECT_NAME}
 )
 
