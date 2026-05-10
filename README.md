@@ -29,33 +29,32 @@ This README shows how the code is organized, how to run it, and how we approache
 
 ```
 final-race-team4-1/
-├── final.sh                # one-shot tmux launcher for the whole race stack
-├── pure_pursuit/           # ROS 2 package: planner + tracker + detector
-│   ├── scripts/
-│   │   ├── pure_pursuit_node.py      # raceline tracker
-│   │   ├── lane_switcher.py          # picks center/left/right lane
-│   │   ├── obstacle_detector.py      # LiDAR gap-based obstacle detector
-│   │   ├── collect_waypoints.py      # click-to-record waypoints in RViz
-│   │   └── assign_velocities.py      # CSV post-processor: curvature → speed
-│   ├── path/                          # all the racelines we tried
-│   └── config/pure_pursuit.yaml
-├── safety_node/            # AEB-style safety stop
-├── raceline_editors/       # browser tools for drawing/editing waypoints
-└── COMMAND.md              # cheatsheet of the launch commands
+├── final.sh                          # one-shot tmux launcher for the whole race stack
+├── COMMAND.md                        # launch commands cheatsheet
+├── pure_pursuit/                     # ROS 2 package: planner + tracker + detector
+│   ├── src/
+│   │   ├── pure_pursuit_zones.cpp    # combined planner + tracker (lane switching + pure pursuit)
+│   │   └── object_detector.cpp       # LiDAR gap-based obstacle detector
+│   ├── include/nanoflann.hpp         # KD-tree header used for nearest-waypoint lookup
+│   ├── path/                         # raceline CSVs (Wpts_optimized_final.csv is the race line)
+│   ├── CMakeLists.txt
+│   └── package.xml
+├── safety_node/                      # AEB-style safety stop
+│   └── src/safety_node.cpp
+└── raceline_editors/                 # browser tools for drawing/editing waypoints
 ```
 
-The runtime stack is three Python ROS 2 nodes plus the f1tenth_stack and particle_filter that come with the car:
+The runtime stack is two C++ ROS 2 nodes plus the f1tenth_stack, particle_filter, and safety_node that come with the car:
 
-- [obstacle_detector.py](pure_pursuit/scripts/obstacle_detector.py) — segments the LiDAR scan into discrete obstacles and publishes their centroids.
-- [lane_switcher.py](pure_pursuit/scripts/lane_switcher.py) — chooses one of three lanes (center / left / right) based on which one is clear ahead.
-- [pure_pursuit_node.py](pure_pursuit/scripts/pure_pursuit_node.py) — follows the active lane using pure pursuit.
+- [object_detector.cpp](pure_pursuit/src/object_detector.cpp) — segments the LiDAR scan into discrete obstacles, runs temporal tracking, and publishes confirmed centroids.
+- [pure_pursuit_zones.cpp](pure_pursuit/src/pure_pursuit_zones.cpp) — picks the active lane (center / left / right) based on obstacle locations and zone rules, and drives the car along that lane with pure pursuit.
 
 Topics flow:
 
 ```
-/scan ──► obstacle_detector ──► /obstacles/centroids ─┐
-                                                      ├─► lane_switcher ──► /planning/active_lane ──► pure_pursuit ──► /drive
-/pf/pose/odom ────────────────────────────────────────┘
+/scan ──► object_detector_node ──► /obstacles/centroids ─┐
+                                                         ├─► pure_pursuit_zones ──► /drive
+/pf/pose/odom ───────────────────────────────────────────┘
 ```
 
 ---
