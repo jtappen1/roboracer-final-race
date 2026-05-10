@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROS Map Waypoint Generator (Smoothed)</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background-color: #0052a3; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .canvas-container {
+            overflow: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: inline-block;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .info { font-family: monospace; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div>
+            <label><strong>1. Load YAML:</strong></label>
+            <input type="file" id="yamlInput" accept=".yaml,.yml">
+        </div>
+        <div>
+            <label><strong>2. Load PNG:</strong></label>
+            <input type="file" id="pngInput" accept="image/png,.pgm">
+        </div>
+        <button id="clearBtn">Clear Path</button>
+        <button id="saveBtn" disabled>Save Waypoints.csv</button>
+        <div class="info" id="statusText">Awaiting files...</div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="mapCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const yamlInput = document.getElementById('yamlInput');
+        const pngInput = document.getElementById('pngInput');
+        const saveBtn = document.getElementById('saveBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statusText = document.getElementById('statusText');
+
+        let mapImage = new Image();
+        let resolution = 0.05; 
+        let origin = [0, 0, 0]; 
+        
+        let rawPath = [];
+        let waypoints = [];
+        let isDrawing = false;
+
+        const WAYPOINT_SPACING_METERS = 0.25;
+        const SMOOTHING_WINDOW = 9; // Number of points to average over
+
+        yamlInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const text = event.target.result;
+                const resMatch = text.match(/resolution:\s*([\d.]+)/);
+                const originMatch = text.match(/origin:\s*\[([\d.-]+),\s*([\d.-]+),\s*([\d.-]+)\]/);
+                
+                if (resMatch) resolution = parseFloat(resMatch[1]);
+                if (originMatch) {
+                    origin = [parseFloat(originMatch[1]), parseFloat(originMatch[2]), parseFloat(originMatch[3])];
+                }
+                statusText.innerText = `Loaded YAML - Res: ${resolution}m/px, Origin: [${origin[0]}, ${origin[1]}]`;
+            };
+            reader.readAsText(file);
+        });
+
+        pngInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                mapImage.onload = () => {
+                    canvas.width = mapImage.width;
+                    canvas.height = mapImage.height;
+                    redrawCanvas();
+                    statusText.innerText += ` | Map loaded`;
+                }
+                mapImage.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function pxToWorld(px, py) {
+            return {
+                x: origin[0] + (px * resolution),
+                y: origin[1] + ((canvas.height - py) * resolution)
+            };
+        }
+
+        function worldToPx(wx, wy) {
+            return {
+                px: (wx - origin[0]) / resolution,
+                py: canvas.height - ((wy - origin[1]) / resolution)
+            };
+        }
+
+        function calculateDistance(pt1, pt2) {
+            return Math.sqrt(Math.pow(pt2.x - pt1.x, 2) + Math.pow(pt2.y - pt1.y, 2));
+        }
+
+        // Apply a moving average filter to the raw mouse coordinates
+        function smoothPath(path, windowSize) {
+            if (path.length < windowSize) return path;
+            let smoothed = [];
+            let halfWindow = Math.floor(windowSize / 2);
+
+            for (let i = 0; i < path.length; i++) {
+                let start = Math.max(0, i - halfWindow);
+                let end = Math.min(path.length - 1, i + halfWindow);
+                let sumX = 0, sumY = 0;
+                let count = end - start + 1;
+                
+                for (let j = start; j <= end; j++) {
+                    sumX += path[j].x;
+                    sumY += path[j].y;
+                }
+                smoothed.push({ x: sumX / count, y: sumY / count });
+            }
+            return smoothed;
+        }
+
+        // Walk along the smoothed path and interpolate points exactly at the spacing interval
+        function resamplePath(path, spacing) {
+            if (path.length < 2) return path.map(p => ({...p, v: 1.0, lookahead: 1.5}));
+            
+            let resampled = [{...path[0], v: 1.0, lookahead: 1.5}];
+            let distSinceLast = 0;
+
+            for (let i = 1; i < path.length; i++) {
+                let prev = path[i - 1];
+                let curr = path[i];
+                let segmentDist = calculateDistance(prev, curr);
+
+                // If a segment is longer than our spacing, we might need to place multiple points inside it
+                while (distSinceLast + segmentDist >= spacing) {
+                    let remainingToSpacing = spacing - distSinceLast;
+                    let ratio = remainingToSpacing / segmentDist;
+
+                    let newX = prev.x + ratio * (curr.x - prev.x);
+                    let newY = prev.y + ratio * (curr.y - prev.y);
+
+                    resampled.push({ x: newX, y: newY, v: 1.0, lookahead: 1.5 });
+
+                    // Advance the prev point and subtract the distance we just covered
+                    prev = { x: newX, y: newY };
+                    segmentDist -= remainingToSpacing;
+                    distSinceLast = 0;
+                }
+                distSinceLast += segmentDist;
+            }
+            return resampled;
+        }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (mapImage.src) {
+                ctx.drawImage(mapImage, 0, 0);
+            }
+            
+            // Draw raw path (faint blue) while drawing
+            if (isDrawing && rawPath.length > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(0, 150, 255, 0.5)';
+                ctx.lineWidth = 3;
+                let startPx = worldToPx(rawPath[0].x, rawPath[0].y);
+                ctx.moveTo(startPx.px, startPx.py);
+                for (let i = 1; i < rawPath.length; i++) {
+                    let ptPx = worldToPx(rawPath[i].x, rawPath[i].y);
+                    ctx.lineTo(ptPx.px, ptPx.py);
+                }
+                ctx.stroke();
+            }
+
+            // Draw final resampled waypoints
+            if (!isDrawing && waypoints.length > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                let startPx = worldToPx(waypoints[0].x, waypoints[0].y);
+                ctx.moveTo(startPx.px, startPx.py);
+                
+                for (let i = 1; i < waypoints.length; i++) {
+                    let ptPx = worldToPx(waypoints[i].x, waypoints[i].y);
+                    ctx.lineTo(ptPx.px, ptPx.py);
+                }
+                ctx.stroke();
+
+                ctx.fillStyle = '#00ff00';
+                waypoints.forEach(wp => {
+                    let ptPx = worldToPx(wp.x, wp.y);
+                    ctx.beginPath();
+                    ctx.arc(ptPx.px, ptPx.py, 4, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!mapImage.src) return;
+            isDrawing = true;
+            rawPath = [];
+            waypoints = [];
+            
+            const rect = canvas.getBoundingClientRect();
+            rawPath.push(pxToWorld(e.clientX - rect.left, e.clientY - rect.top));
+            
+            saveBtn.disabled = true;
+            redrawCanvas();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const currentPt = pxToWorld(e.clientX - rect.left, e.clientY - rect.top);
+            
+            // Only add to raw path if we moved a tiny bit to prevent arrays getting massive
+            if (calculateDistance(rawPath[rawPath.length - 1], currentPt) > 0.02) {
+                rawPath.push(currentPt);
+                redrawCanvas();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            if (rawPath.length > 2) {
+                let smoothed = smoothPath(rawPath, SMOOTHING_WINDOW);
+                waypoints = resamplePath(smoothed, WAYPOINT_SPACING_METERS);
+                saveBtn.disabled = false;
+            }
+            
+            redrawCanvas();
+            statusText.innerText = `Smoothed and generated ${waypoints.length} waypoints at 0.5m spacing.`;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (isDrawing) {
+                canvas.dispatchEvent(new Event('mouseup')); // Trigger finalization
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            rawPath = [];
+            waypoints = [];
+            saveBtn.disabled = true;
+            redrawCanvas();
+            statusText.innerText = "Path cleared.";
+        });
+
+        saveBtn.addEventListener('click', () => {
+            if (waypoints.length === 0) return;
+
+            let csvContent = "x,y,velocity,lookahead\n";
+            waypoints.forEach(wp => {
+                csvContent += `${wp.x.toFixed(4)},${wp.y.toFixed(4)},${wp.v.toFixed(1)},${wp.lookahead.toFixed(1)}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "waypoints.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>

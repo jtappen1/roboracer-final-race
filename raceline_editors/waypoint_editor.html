@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pure Pursuit Waypoint Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --text: #e6edf3;
+    --muted: #8b949e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  #coord-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 8px;
+  }
+
+  #dirty-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(210,153,34,0.15);
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    display: none;
+  }
+
+  .hdr-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 252px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .panel {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+
+  .panel-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .drop-zone {
+    border: 1px dashed var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(88,166,255,0.05);
+  }
+  .drop-zone.loaded {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(63,185,80,0.05);
+  }
+  .drop-zone input {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .slider-group { margin-bottom: 12px; }
+  .slider-row {
+    display: flex; justify-content: space-between;
+    align-items: baseline; margin-bottom: 5px;
+  }
+  .slider-row span { font-size: 11px; color: var(--text); }
+  .slider-row .v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent); font-weight: 600;
+  }
+  input[type=range] {
+    width: 100%; appearance: none;
+    height: 4px; border-radius: 2px; outline: none; cursor: pointer;
+  }
+  .vel-track { background: linear-gradient(to right, #3fb950, #d29922, #f85149); }
+  .la-track  { background: linear-gradient(to right, #1a3a5c, #58a6ff); }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; width: 13px; height: 13px;
+    border-radius: 50%; background: white;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 3px rgba(88,166,255,0.2);
+    cursor: grab;
+  }
+  input[type=range]:active::-webkit-slider-thumb { cursor: grabbing; }
+
+  .mode-row { display: flex; gap: 5px; margin-bottom: 8px; }
+  .mode-btn {
+    flex: 1; padding: 5px 2px;
+    border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted);
+    border-radius: 4px; font-size: 10px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer; transition: all 0.12s; text-align: center;
+  }
+  .mode-btn:hover { border-color: var(--accent); color: var(--text); }
+  .mode-btn.active {
+    background: rgba(88,166,255,0.15);
+    border-color: var(--accent); color: var(--accent);
+  }
+
+  .btn {
+    width: 100%; padding: 8px 10px;
+    border-radius: 5px; border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+    cursor: pointer; text-transform: uppercase;
+    transition: all 0.12s; margin-bottom: 5px; display: block;
+  }
+  .btn-save {
+    background: rgba(63,185,80,0.15);
+    border-color: var(--green); color: var(--green);
+    font-size: 12px; padding: 10px;
+  }
+  .btn-save:hover { background: rgba(63,185,80,0.28); }
+  .btn-blue {
+    background: rgba(88,166,255,0.12);
+    border-color: var(--accent); color: var(--accent);
+  }
+  .btn-blue:hover { background: rgba(88,166,255,0.22); }
+  .btn-red {
+    background: rgba(248,81,73,0.08);
+    border-color: var(--red); color: var(--red);
+  }
+  .btn-red:hover { background: rgba(248,81,73,0.18); }
+  .btn-muted {
+    background: var(--surface2); color: var(--muted);
+  }
+  .btn-muted:hover { color: var(--text); border-color: var(--muted); }
+
+  .save-name-row { display: flex; gap: 6px; margin-bottom: 5px; }
+  .save-name-row input {
+    flex: 1; padding: 7px 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    outline: none; transition: border-color 0.12s;
+  }
+  .save-name-row input:focus { border-color: var(--green); }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .stat-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px;
+  }
+  .stat-card .sl { font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--muted); text-transform: uppercase; margin-bottom: 1px; }
+  .stat-card .sv { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; }
+
+  .legend-bar {
+    height: 7px; border-radius: 4px;
+    background: linear-gradient(to right, #3fb950, #d29922, #f85149);
+    margin-bottom: 4px;
+  }
+  .legend-labels {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted);
+  }
+
+  .map-opacity-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .map-opacity-row span { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .map-opacity-row input { flex:1; }
+
+  .canvas-wrap {
+    flex: 1; position: relative; overflow: hidden;
+    background: #060a0d; cursor: crosshair;
+  }
+  #map-canvas { position: absolute; top:0; left:0; }
+
+  #sel-rect {
+    position: absolute;
+    border: 1.5px dashed var(--accent);
+    background: rgba(88,166,255,0.06);
+    pointer-events: none; display: none; z-index: 10;
+  }
+
+  #tooltip {
+    position: fixed; pointer-events: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 9px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--text); display: none; z-index: 100; white-space: nowrap;
+    line-height: 1.6;
+  }
+
+  #notif { position: fixed; bottom: 18px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 200; }
+  .notif {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 8px 12px; font-size: 11px;
+    display: flex; align-items: center; gap: 7px;
+    animation: slideIn 0.18s ease; min-width: 200px;
+  }
+  @keyframes slideIn { from{transform:translateX(20px);opacity:0} to{transform:translateX(0);opacity:1} }
+  .notif.ok  { border-left: 3px solid var(--green); }
+  .notif.err { border-left: 3px solid var(--red); }
+  .notif.info{ border-left: 3px solid var(--accent); }
+
+  .kbd-bar {
+    display: flex; gap: 14px; padding: 4px 12px;
+    background: var(--surface); border-top: 1px solid var(--border);
+    flex-shrink: 0; overflow-x: auto;
+  }
+  .kh { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--muted); white-space: nowrap; }
+  kbd {
+    font-family: 'JetBrains Mono', monospace; font-size: 8px;
+    padding: 1px 4px; border: 1px solid var(--border);
+    border-radius: 2px; background: var(--surface2); color: var(--text);
+  }
+
+  #sel-badge {
+    position: absolute; top: 8px; right: 10px;
+    background: rgba(88,166,255,0.18); border: 1px solid var(--accent);
+    border-radius: 3px; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--accent); padding: 2px 7px;
+    pointer-events: none; display: none; z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⊕ Pure Pursuit Editor</h1>
+  <span id="coord-display">x=0.00  y=0.00</span>
+  <span id="dirty-badge">● UNSAVED CHANGES</span>
+  <div class="hdr-right">
+    <button class="btn btn-save" id="quick-save-btn" style="width:auto;margin:0;padding:6px 14px;font-size:11px">
+      💾 SAVE CSV
+    </button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+
+    <div class="panel">
+      <div class="panel-title">📂 Load Files</div>
+      <div class="drop-zone" id="dz-img">
+        <input type="file" id="img-input" accept=".png,.pgm,.jpg,.jpeg,.bmp">
+        📷 Map Image (.png / .pgm)
+      </div>
+      <div class="drop-zone" id="dz-csv">
+        <input type="file" id="csv-input" accept=".csv">
+        📍 Waypoints (.csv)
+      </div>
+      <div class="drop-zone" id="dz-yaml">
+        <input type="file" id="yaml-input" accept=".yaml,.yml">
+        ⚙️ Map Config (.yaml)
+      </div>
+      <div style="margin-top:8px;padding:7px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);line-height:1.6">
+        <span id="yaml-status">YAML pre-loaded: origin=[-24.1,-8.17] res=0.05</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🗺️ Map Display</div>
+      <div class="map-opacity-row">
+        <span>Opacity</span>
+        <input type="range" id="map-opacity" min="0" max="1" step="0.05" value="0.75" class="la-track">
+        <span id="map-opacity-val" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent)">0.75</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">⚡ New Waypoint Defaults</div>
+      <div class="slider-group">
+        <div class="slider-row"><span>Velocity (m/s)</span><span class="v" id="vel-val">2.0</span></div>
+        <input type="range" id="vel-slider" min="0.1" max="10" step="0.1" value="2.0" class="vel-track">
+      </div>
+      <div class="slider-group" style="margin-bottom:0">
+        <div class="slider-row"><span>Lookahead (m)</span><span class="v" id="la-val">1.00</span></div>
+        <input type="range" id="la-slider" min="0.1" max="5" step="0.05" value="1.0" class="la-track">
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">✏️ Edit Mode</div>
+      <div class="mode-row">
+        <div class="mode-btn active" data-mode="select">SEL</div>
+        <div class="mode-btn" data-mode="add">ADD</div>
+        <div class="mode-btn" data-mode="delete">DEL</div>
+      </div>
+      <div id="mode-hint" style="font-size:10px;color:var(--muted);line-height:1.5">
+        Drag to box-select. Shift+click adds to selection.
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🎯 Selected</div>
+      <div id="sel-info" style="font-size:11px;color:var(--muted);margin-bottom:8px">No selection</div>
+      <div id="sel-controls" style="display:none">
+        <div class="slider-group">
+          <div class="slider-row"><span>Velocity (m/s)</span><span class="v" id="sel-vel-val">–</span></div>
+          <input type="range" id="sel-vel-slider" min="0.1" max="10" step="0.1" value="2.0" class="vel-track">
+        </div>
+        <div class="slider-group">
+          <div class="slider-row"><span>Lookahead (m)</span><span class="v" id="sel-la-val">–</span></div>
+          <input type="range" id="sel-la-slider" min="0.1" max="5" step="0.05" value="1.0" class="la-track">
+        </div>
+        <button class="btn btn-blue" id="apply-sel-btn">↳ Apply to Selection</button>
+        <button class="btn btn-muted" id="desel-btn">✕ Deselect All</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">📊 Stats</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="sl">Waypoints</div><div class="sv" id="stat-n">0</div></div>
+        <div class="stat-card"><div class="sl">Selected</div><div class="sv" id="stat-sel">0</div></div>
+        <div class="stat-card"><div class="sl">Min Vel</div><div class="sv" id="stat-vmin">–</div></div>
+        <div class="stat-card"><div class="sl">Max Vel</div><div class="sv" id="stat-vmax">–</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🌈 Velocity Color</div>
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span>Slow (green)</span><span>Fast (red)</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">💾 Save</div>
+      <button class="btn btn-save" id="save-btn">💾 SAVE — New Timestamped File</button>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+        Every save creates a new file: <em>name_YYYYMMDD_HHMMSS.csv</em>
+      </div>
+      <div class="save-name-row">
+        <input type="text" id="save-name" placeholder="custom_name.csv">
+        <button class="btn btn-blue" id="save-named-btn" style="width:auto;margin:0;padding:6px 10px;font-size:10px">SAVE AS</button>
+      </div>
+      <button class="btn btn-red" id="clear-btn" style="margin-top:4px">🗑 Clear All Waypoints</button>
+    </div>
+
+  </div>
+
+  <div class="canvas-wrap" id="canvas-wrap">
+    <canvas id="map-canvas"></canvas>
+    <div id="sel-rect"></div>
+    <div id="sel-badge"></div>
+  </div>
+</div>
+
+<div class="kbd-bar">
+  <div class="kh"><kbd>S</kbd> Select</div>
+  <div class="kh"><kbd>A</kbd> Add</div>
+  <div class="kh"><kbd>D</kbd> Delete</div>
+  <div class="kh"><kbd>Ctrl+A</kbd> Select all</div>
+  <div class="kh"><kbd>Del</kbd> Delete selected</div>
+  <div class="kh"><kbd>Ctrl+S</kbd> Save</div>
+  <div class="kh"><kbd>Scroll</kbd> Zoom</div>
+  <div class="kh"><kbd>Mid-drag</kbd> Pan</div>
+  <div class="kh"><kbd>F</kbd> Fit view</div>
+  <div class="kh"><kbd>Esc</kbd> Deselect</div>
+</div>
+
+<div id="tooltip"></div>
+<div id="notif"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+const S = {
+  waypoints: [],
+  selected: new Set(),
+  mode: 'select',
+
+  // ROS map config (from YAML)
+  // origin = world coords (metres) of the image's BOTTOM-LEFT corner
+  mapOriginX: -24.1,
+  mapOriginY: -8.17,
+  mapResolution: 0.05,   // metres per pixel
+
+  zoom: 1, camX: 0, camY: 0,
+
+  mapImg: null, mapW: 0, mapH: 0,
+  mapOpacity: 0.75,
+
+  isDragging: false, dragStart: null,
+  isPanning: false,  panStart: null, panCam: null,
+
+  baseFilename: 'waypoints',
+  dirty: false,
+};
+
+let defaultVel = 2.0;
+let defaultLA  = 1.0;
+
+const canvas  = document.getElementById('map-canvas');
+const ctx     = canvas.getContext('2d');
+const wrap    = document.getElementById('canvas-wrap');
+const tooltip = document.getElementById('tooltip');
+const selRect = document.getElementById('sel-rect');
+
+// ═══════════════════════════════════════════════════════
+//  RESIZE
+// ═══════════════════════════════════════════════════════
+function resizeCanvas() {
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ═══════════════════════════════════════════════════════
+//  COORDINATE TRANSFORMS
+//
+//  ROS .pgm map convention:
+//    pixel (col, row) with row=0 at TOP of image
+//    world_x = origin_x + col  * resolution
+//    world_y = origin_y + (mapH - 1 - row) * resolution
+//
+//  So:
+//    col  = (world_x - origin_x) / resolution
+//    row  = mapH - 1 - (world_y - origin_y) / resolution
+//
+//  Canvas draws the image at (camX, camY) scaled by zoom,
+//  so image pixel (col, row) lands at canvas:
+//    cx = camX + col * zoom
+//    cy = camY + row * zoom
+//
+//  Combining:
+//    cx = camX + (world_x - origin_x) / resolution * zoom
+//    cy = camY + (mapH - 1 - (world_y - origin_y)/resolution) * zoom
+// ═══════════════════════════════════════════════════════
+
+function w2c(wx, wy) {
+  const col = (wx - S.mapOriginX) / S.mapResolution;
+  const row = (S.mapH - 1) - (wy - S.mapOriginY) / S.mapResolution;
+  return [
+    S.camX + col * S.zoom,
+    S.camY + row * S.zoom,
+  ];
+}
+
+function c2w(cx, cy) {
+  const col = (cx - S.camX) / S.zoom;
+  const row = (cy - S.camY) / S.zoom;
+  return [
+    S.mapOriginX + col * S.mapResolution,
+    S.mapOriginY + (S.mapH - 1 - row) * S.mapResolution,
+  ];
+}
+
+// ═══════════════════════════════════════════════════════
+//  COLOUR
+// ═══════════════════════════════════════════════════════
+function velColor(v, vmin, vmax, a=1) {
+  const t = vmax > vmin ? Math.max(0, Math.min(1, (v-vmin)/(vmax-vmin))) : 0.5;
+  let r, g, b;
+  if (t < 0.5) {
+    const u = t * 2;
+    r = Math.round(63  + u*(210-63));
+    g = Math.round(185 - u*(185-153));
+    b = Math.round(80  - u*80);
+  } else {
+    const u = (t-0.5)*2;
+    r = Math.round(210 + u*(248-210));
+    g = Math.round(153 - u*(153-81));
+    b = Math.round(0   + u*73);
+  }
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════
+function render() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#060a0d';
+  ctx.fillRect(0,0,W,H);
+  drawGrid();
+
+  // Draw map image — image pixel (0,0) is at canvas (camX, camY)
+  if (S.mapImg) {
+    ctx.save();
+    ctx.globalAlpha = S.mapOpacity;
+    ctx.drawImage(S.mapImg, S.camX, S.camY, S.mapW * S.zoom, S.mapH * S.zoom);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  if (!S.waypoints.length) return;
+
+  const vels = S.waypoints.map(w => w.velocity);
+  const vmin = Math.min(...vels), vmax = Math.max(...vels);
+  const dotR = Math.max(3, Math.min(7, 5));
+
+  // path lines
+  for (let i = 0; i < S.waypoints.length-1; i++) {
+    const [x0,y0] = w2c(S.waypoints[i].x,   S.waypoints[i].y);
+    const [x1,y1] = w2c(S.waypoints[i+1].x, S.waypoints[i+1].y);
+    ctx.strokeStyle = velColor(S.waypoints[i].velocity, vmin, vmax, 0.6);
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+    ctx.stroke();
+  }
+
+  // dots
+  S.waypoints.forEach((w,i) => {
+    const [cx,cy] = w2c(w.x, w.y);
+    if (cx < -20 || cy < -20 || cx > W+20 || cy > H+20) return;
+    const isSel = S.selected.has(i);
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI*2);
+    ctx.fillStyle = velColor(w.velocity, vmin, vmax);
+    ctx.fill();
+    if (isSel) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, dotR+4, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(88,166,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  });
+}
+
+function drawGrid() {
+  const W = canvas.width, H = canvas.height;
+  const step = Math.max(20, 50*S.zoom);
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.lineWidth = 1;
+  for (let x = ((S.camX%step)+step)%step; x<W; x+=step) {
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for (let y = ((S.camY%step)+step)%step; y<H; y+=step) {
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  // world origin crosshair
+  const [ox,oy] = w2c(0,0);
+  ctx.strokeStyle = 'rgba(88,166,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(ox-14,oy); ctx.lineTo(ox+14,oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox,oy-14); ctx.lineTo(ox,oy+14); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ═══════════════════════════════════════════════════════
+//  FIT VIEW
+// ═══════════════════════════════════════════════════════
+function fitView() {
+  if (S.mapImg) {
+    const sx = canvas.width  / S.mapW;
+    const sy = canvas.height / S.mapH;
+    S.zoom = Math.min(sx, sy) * 0.96;
+    S.camX = (canvas.width  - S.mapW * S.zoom) / 2;
+    S.camY = (canvas.height - S.mapH * S.zoom) / 2;
+  } else if (S.waypoints.length) {
+    const xs = S.waypoints.map(w=>w.x);
+    const ys = S.waypoints.map(w=>w.y);
+    const spanX = (Math.max(...xs)-Math.min(...xs)) || 20;
+    const spanY = (Math.max(...ys)-Math.min(...ys)) || 20;
+    const px = spanX / S.mapResolution;
+    const py = spanY / S.mapResolution;
+    S.zoom = Math.max(0.05, Math.min(canvas.width/(px*1.3), canvas.height/(py*1.3), 20));
+    // center camera on waypoint centroid
+    S.camX = 0; S.camY = 0;
+    const mx = (Math.max(...xs)+Math.min(...xs))/2;
+    const my = (Math.max(...ys)+Math.min(...ys))/2;
+    const [pcx,pcy] = w2c(mx,my);
+    S.camX += canvas.width/2  - pcx;
+    S.camY += canvas.height/2 - pcy;
+  }
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  INTERACTION
+// ═══════════════════════════════════════════════════════
+function cpos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX-r.left, y: e.clientY-r.top };
+}
+
+function nearestWP(cx, cy, threshPx=12) {
+  let best=-1, bestD=Infinity;
+  const threshW = threshPx / S.zoom * S.mapResolution;
+  const [wx,wy] = c2w(cx,cy);
+  S.waypoints.forEach((w,i) => {
+    const d = Math.hypot(w.x-wx, w.y-wy);
+    if (d < threshW && d < bestD) { bestD=d; best=i; }
+  });
+  return best;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const pos = cpos(e);
+  if (e.button===1) {
+    e.preventDefault();
+    S.isPanning=true; S.panStart=pos; S.panCam={x:S.camX,y:S.camY}; return;
+  }
+  if (e.button!==0) return;
+
+  if (S.mode==='add') {
+    const [wx,wy] = c2w(pos.x,pos.y);
+    S.waypoints.push({x:wx,y:wy,velocity:defaultVel,lookahead:defaultLA});
+    markDirty(); updateStats(); render(); return;
+  }
+
+  if (S.mode==='delete') {
+    const idx = nearestWP(pos.x,pos.y);
+    if (idx>=0) {
+      S.waypoints.splice(idx,1);
+      const ns=new Set();
+      S.selected.forEach(i=>{ if(i<idx) ns.add(i); else if(i>idx) ns.add(i-1); });
+      S.selected=ns;
+      markDirty(); updateStats(); updateSelUI(); render();
+    }
+    return;
+  }
+
+  // SELECT
+  const idx = nearestWP(pos.x,pos.y);
+  if (idx>=0) {
+    if (e.shiftKey) { if(S.selected.has(idx)) S.selected.delete(idx); else S.selected.add(idx); }
+    else { if(!S.selected.has(idx)){ S.selected.clear(); S.selected.add(idx); } }
+    updateSelUI(); render(); return;
+  }
+
+  // drag-select
+  S.isDragging=true; S.dragStart=pos;
+  selRect.style.cssText = `display:block;left:${pos.x}px;top:${pos.y}px;width:0;height:0`;
+  if (!e.shiftKey) S.selected.clear();
+});
+
+canvas.addEventListener('mousemove', e => {
+  const pos = cpos(e);
+
+  if (S.isPanning) {
+    S.camX = S.panCam.x+(pos.x-S.panStart.x);
+    S.camY = S.panCam.y+(pos.y-S.panStart.y);
+    render(); return;
+  }
+
+  if (S.isDragging) {
+    const x0=Math.min(S.dragStart.x,pos.x), y0=Math.min(S.dragStart.y,pos.y);
+    selRect.style.left=x0+'px'; selRect.style.top=y0+'px';
+    selRect.style.width=Math.abs(pos.x-S.dragStart.x)+'px';
+    selRect.style.height=Math.abs(pos.y-S.dragStart.y)+'px';
+    return;
+  }
+
+  const [wx,wy] = c2w(pos.x,pos.y);
+  document.getElementById('coord-display').textContent = `x=${wx.toFixed(2)}  y=${wy.toFixed(2)}`;
+
+  const idx = nearestWP(pos.x,pos.y);
+  if (idx>=0) {
+    const w = S.waypoints[idx];
+    tooltip.style.display='block';
+    tooltip.style.left=(e.clientX+14)+'px';
+    tooltip.style.top=(e.clientY-8)+'px';
+    tooltip.innerHTML=`#${idx}<br>x=${w.x.toFixed(3)}  y=${w.y.toFixed(3)}<br>vel=${w.velocity.toFixed(2)} m/s  la=${w.lookahead.toFixed(2)} m`;
+  } else {
+    tooltip.style.display='none';
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (e.button===1) { S.isPanning=false; return; }
+  if (!S.isDragging) return;
+  S.isDragging=false; selRect.style.display='none';
+
+  const pos=cpos(e);
+  const x0=Math.min(S.dragStart.x,pos.x), y0=Math.min(S.dragStart.y,pos.y);
+  const x1=Math.max(S.dragStart.x,pos.x), y1=Math.max(S.dragStart.y,pos.y);
+
+  if (x1-x0<3 && y1-y0<3) { if(!e.shiftKey) S.selected.clear(); updateSelUI(); render(); return; }
+
+  S.waypoints.forEach((w,i) => {
+    const [cx,cy]=w2c(w.x,w.y);
+    if (cx>=x0&&cx<=x1&&cy>=y0&&cy<=y1) S.selected.add(i);
+  });
+  updateSelUI(); render();
+});
+
+canvas.addEventListener('mouseleave', ()=>{ tooltip.style.display='none'; });
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const pos=cpos(e), f=e.deltaY<0?1.12:1/1.12;
+  S.zoom*=f;
+  S.camX=pos.x-(pos.x-S.camX)*f;
+  S.camY=pos.y-(pos.y-S.camY)*f;
+  render();
+},{passive:false});
+
+// ═══════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+  if (e.key==='s') setMode('select');
+  if (e.key==='a'&&!e.ctrlKey&&!e.metaKey) setMode('add');
+  if (e.key==='d') setMode('delete');
+  if (e.key==='f'||e.key==='F') fitView();
+  if ((e.ctrlKey||e.metaKey)&&e.key==='a') { e.preventDefault(); S.selected=new Set(S.waypoints.map((_,i)=>i)); updateSelUI(); render(); }
+  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); doSave(); }
+  if ((e.key==='Delete'||e.key==='Backspace')&&S.selected.size>0) {
+    S.waypoints=S.waypoints.filter((_,i)=>!S.selected.has(i));
+    S.selected.clear();
+    markDirty(); updateStats(); updateSelUI(); render();
+  }
+  if (e.key==='Escape') { S.selected.clear(); updateSelUI(); render(); }
+});
+
+// ═══════════════════════════════════════════════════════
+//  MODE
+// ═══════════════════════════════════════════════════════
+function setMode(m) {
+  S.mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  const hints={select:'Drag to box-select. Shift+click adds to selection.',add:'Click anywhere to place a new waypoint.',delete:'Click a waypoint to remove it.'};
+  document.getElementById('mode-hint').textContent=hints[m];
+  canvas.style.cursor=m==='add'?'crosshair':m==='delete'?'not-allowed':'default';
+}
+document.querySelectorAll('.mode-btn').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+
+// ═══════════════════════════════════════════════════════
+//  SLIDERS
+// ═══════════════════════════════════════════════════════
+document.getElementById('vel-slider').addEventListener('input',e=>{ defaultVel=parseFloat(e.target.value); document.getElementById('vel-val').textContent=defaultVel.toFixed(1); });
+document.getElementById('la-slider').addEventListener('input',e=>{ defaultLA=parseFloat(e.target.value); document.getElementById('la-val').textContent=defaultLA.toFixed(2); });
+document.getElementById('map-opacity').addEventListener('input',e=>{ S.mapOpacity=parseFloat(e.target.value); document.getElementById('map-opacity-val').textContent=S.mapOpacity.toFixed(2); render(); });
+document.getElementById('sel-vel-slider').addEventListener('input',e=>{ document.getElementById('sel-vel-val').textContent=parseFloat(e.target.value).toFixed(1); });
+document.getElementById('sel-la-slider').addEventListener('input',e=>{ document.getElementById('sel-la-val').textContent=parseFloat(e.target.value).toFixed(2); });
+
+document.getElementById('apply-sel-btn').addEventListener('click',()=>{
+  if (!S.selected.size) return;
+  const v=parseFloat(document.getElementById('sel-vel-slider').value);
+  const la=parseFloat(document.getElementById('sel-la-slider').value);
+  S.selected.forEach(i=>{ S.waypoints[i].velocity=v; S.waypoints[i].lookahead=la; });
+  markDirty(); updateStats(); render();
+  notify(`vel=${v.toFixed(1)} la=${la.toFixed(2)} → ${S.selected.size} pts`,'ok');
+});
+document.getElementById('desel-btn').addEventListener('click',()=>{ S.selected.clear(); updateSelUI(); render(); });
+
+// ═══════════════════════════════════════════════════════
+//  FILE LOADERS
+// ═══════════════════════════════════════════════════════
+document.getElementById('img-input').addEventListener('change', e => {
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      S.mapImg=img; S.mapW=img.width; S.mapH=img.height;
+      document.getElementById('dz-img').classList.add('loaded');
+      document.getElementById('dz-img').textContent=`✓ ${f.name} (${img.width}×${img.height})`;
+      fitView();
+      notify(`Map loaded: ${img.width}×${img.height}px`,'ok');
+    };
+    img.onerror=()=>notify('Failed to load image. Convert .pgm to .png first.','err');
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+document.getElementById('csv-input').addEventListener('change', e => {
+  const f=e.target.files[0]; if(!f) return;
+  S.baseFilename=f.name.replace(/\.csv$/i,'');
+  document.getElementById('save-name').placeholder=S.baseFilename+'_edit.csv';
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    parseCSV(ev.target.result);
+    document.getElementById('dz-csv').classList.add('loaded');
+    document.getElementById('dz-csv').textContent=`✓ ${f.name} — ${S.waypoints.length} pts`;
+    notify(`Loaded ${S.waypoints.length} waypoints`,'ok');
+    if (!S.mapImg) fitView(); else render();
+  };
+  reader.readAsText(f);
+});
+
+document.getElementById('yaml-input').addEventListener('change', e => {
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{ parseYAML(ev.target.result); document.getElementById('dz-yaml').classList.add('loaded'); document.getElementById('dz-yaml').textContent=`✓ ${f.name}`; };
+  reader.readAsText(f);
+});
+
+// drag-drop on drop zones
+document.querySelectorAll('.drop-zone').forEach(dz=>{
+  dz.addEventListener('dragover',e=>{ e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',e=>{
+    e.preventDefault(); dz.classList.remove('drag-over');
+    const input=dz.querySelector('input');
+    if (input&&e.dataTransfer.files.length) {
+      try { const dt=new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); input.files=dt.files; input.dispatchEvent(new Event('change')); } catch(err){}
+    }
+  });
+});
+
+function parseCSV(text) {
+  S.waypoints=[];
+  text.trim().split('\n').forEach(line=>{
+    const p=line.trim().split(',');
+    if (p.length<2) return;
+    const x=parseFloat(p[0]),y=parseFloat(p[1]);
+    if (isNaN(x)||isNaN(y)) return;
+    const velocity  = p.length>2 ? (parseFloat(p[2])||defaultVel) : defaultVel;
+    const lookahead = p.length>3 ? (parseFloat(p[3])||defaultLA)  : defaultLA;
+    S.waypoints.push({x,y,velocity,lookahead});
+  });
+  S.dirty=false; setDirtyUI(false); updateStats();
+}
+
+function parseYAML(text) {
+  const om=text.match(/origin:\s*\[([^\]]+)\]/);
+  const rm=text.match(/resolution:\s*([\d.e+-]+)/);
+  if (om) { const p=om[1].split(',').map(s=>parseFloat(s.trim())); S.mapOriginX=p[0]; S.mapOriginY=p[1]; }
+  if (rm) S.mapResolution=parseFloat(rm[1]);
+  document.getElementById('yaml-status').textContent=`YAML: origin=[${S.mapOriginX.toFixed(2)}, ${S.mapOriginY.toFixed(2)}] res=${S.mapResolution}`;
+  notify(`YAML: origin=[${S.mapOriginX},${S.mapOriginY}] res=${S.mapResolution}`,'info');
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  SAVE
+// ═══════════════════════════════════════════════════════
+function toCSV() {
+  return S.waypoints.map(w=>`${w.x},${w.y},${w.velocity},${w.lookahead}`).join('\n');
+}
+
+function downloadCSV(filename) {
+  const blob=new Blob([toCSV()],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+function timestampedName(base) {
+  const n=new Date();
+  const ts=[n.getFullYear(),String(n.getMonth()+1).padStart(2,'0'),String(n.getDate()).padStart(2,'0'),'_',String(n.getHours()).padStart(2,'0'),String(n.getMinutes()).padStart(2,'0'),String(n.getSeconds()).padStart(2,'0')].join('');
+  return `${base}_${ts}.csv`;
+}
+
+function doSave() {
+  const name=timestampedName(S.baseFilename);
+  downloadCSV(name); setDirtyUI(false);
+  notify(`Saved: ${name}`,'ok');
+}
+
+document.getElementById('save-btn').addEventListener('click', doSave);
+document.getElementById('quick-save-btn').addEventListener('click', doSave);
+
+document.getElementById('save-named-btn').addEventListener('click',()=>{
+  let name=document.getElementById('save-name').value.trim();
+  if (!name) { notify('Enter a filename','err'); return; }
+  if (!name.endsWith('.csv')) name+='.csv';
+  downloadCSV(name); setDirtyUI(false);
+  notify(`Saved: ${name}`,'ok');
+});
+
+document.getElementById('clear-btn').addEventListener('click',()=>{
+  if(!confirm('Clear all waypoints?')) return;
+  S.waypoints=[]; S.selected.clear();
+  markDirty(); updateStats(); updateSelUI(); render();
+});
+
+// ═══════════════════════════════════════════════════════
+//  DIRTY
+// ═══════════════════════════════════════════════════════
+function markDirty() { S.dirty=true; setDirtyUI(true); }
+function setDirtyUI(d) { document.getElementById('dirty-badge').style.display=d?'inline-block':'none'; }
+
+// ═══════════════════════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('stat-n').textContent=S.waypoints.length;
+  document.getElementById('stat-sel').textContent=S.selected.size;
+  const vels=S.waypoints.map(w=>w.velocity);
+  document.getElementById('stat-vmin').textContent=vels.length?Math.min(...vels).toFixed(1):'–';
+  document.getElementById('stat-vmax').textContent=vels.length?Math.max(...vels).toFixed(1):'–';
+}
+
+function updateSelUI() {
+  updateStats();
+  const n=S.selected.size;
+  const badge=document.getElementById('sel-badge');
+  if (n===0) {
+    document.getElementById('sel-info').textContent='No selection';
+    document.getElementById('sel-controls').style.display='none';
+    badge.style.display='none';
+  } else {
+    document.getElementById('sel-info').textContent=`${n} waypoint${n>1?'s':''} selected`;
+    document.getElementById('sel-controls').style.display='block';
+    badge.style.display='block'; badge.textContent=`${n} selected`;
+    const sel=[...S.selected].map(i=>S.waypoints[i]);
+    const avgV=sel.reduce((a,w)=>a+w.velocity,0)/sel.length;
+    const avgLA=sel.reduce((a,w)=>a+w.lookahead,0)/sel.length;
+    document.getElementById('sel-vel-slider').value=avgV;
+    document.getElementById('sel-vel-val').textContent=avgV.toFixed(1);
+    document.getElementById('sel-la-slider').value=avgLA;
+    document.getElementById('sel-la-val').textContent=avgLA.toFixed(2);
+  }
+}
+
+function notify(msg, type='info') {
+  const el=document.createElement('div');
+  el.className=`notif ${type}`; el.textContent=msg;
+  document.getElementById('notif').appendChild(el);
+  setTimeout(()=>{ el.style.transition='opacity 0.3s'; el.style.opacity='0'; setTimeout(()=>el.remove(),350); },3000);
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+notify('1) Load map image  2) Load CSV  3) Load YAML if needed','info');
+render();
+</script>
+</body>
+</html>
