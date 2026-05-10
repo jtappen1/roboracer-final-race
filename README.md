@@ -243,31 +243,9 @@ The script opens a tmux session called `workspace`, sources both ROS 2 and the w
 | 5 | `ros2 launch particle_filter localize_launch.py` | Localization on the prebuilt map |
 | 6 | `ros2 run final_race_pure_pursuit lane_switcher.py` | Lane selection state machine |
 
-Detach with `Ctrl+b d`, kill the whole stack with `tmux kill-session -t workspace`.
+Detach with `Ctrl+b`, kill the whole stack with `:kill-session`.
 
-### Manual launch (if you don't want tmux)
-
-The same six commands can be run in six terminals — the order doesn't matter as long as they're all up. See [COMMAND.md](COMMAND.md) for a copy-paste cheatsheet.
-
-### Switching the raceline
-
-Both `lane_switcher.py` and `pure_pursuit_node.py` load their CSV path from a hard-coded `path/...` location in the source. To race a different line:
-
-1. Drop your CSV into [pure_pursuit/path/](pure_pursuit/path/).
-2. Update the path in `lane_switcher.py` (the `waypoints_csv` parameter declaration) and `pure_pursuit_node.py` (the `get_waypoints(...)` call).
-3. Rebuild the workspace.
-
-Or pass it as a ROS parameter for the lane switcher:
-
-```bash
-ros2 run final_race_pure_pursuit lane_switcher.py --ros-args \
-  -p waypoints_csv:=/home/nvidia/ros2_ws/src/final-race-team4-1/pure_pursuit/path/Wpts_optimized_final.csv
-```
 
 ### Editing a raceline in the browser
 
 Open any of the HTML files in [raceline_editors/](raceline_editors/) directly in a browser. Drop your CSV onto the page, edit, export, and copy back into [pure_pursuit/path/](pure_pursuit/path/).
-
-### Running in simulation
-
-The same nodes run in the F1TENTH gym sim — change `odom_topic` for the lane switcher to `/ego_racecar/odom` and disable `particle_filter`. The TF and topic names are otherwise identical.
