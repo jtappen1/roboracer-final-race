@@ -131,7 +131,6 @@ The detector publishes:
 We precompute three parallel lanes — `center`, `left`, and `right` — and switch between them.
 
 
-```
 
 ### How a lane is decided "blocked"
 
