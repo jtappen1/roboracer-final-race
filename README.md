@@ -19,9 +19,7 @@ This README shows how the code is organized, how to run it, and how we approache
 
 ## Demo
 
-> Demo video (10–60 s): _add link here_
->
-> Example: `https://youtu.be/<your-video-id>`
+> Race Video: https://youtu.be/tG2q-ZMUy8c?si=EiIFjeKLbBB9Dpjp
 
 ---
 
