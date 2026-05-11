@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waypoint Editor</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 12px;
+    background: #f5f5f5;
+    color: #222;
+  }
+  .topbar {
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+  .topbar > div { display: flex; gap: 8px; align-items: center; }
+  .topbar label { font-size: 13px; font-weight: 600; }
+  button {
+    padding: 7px 14px;
+    background: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  button:hover { background: #0052a3; }
+  button:disabled { background: #bbb; cursor: not-allowed; }
+  button.secondary { background: #666; }
+  button.secondary:hover { background: #444; }
+  button.danger { background: #c0392b; }
+  button.danger:hover { background: #962d22; }
+  button.toggle { background: #888; }
+  button.toggle.active { background: #cc6600; }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 10px;
+    align-items: start;
+  }
+  .canvas-wrap {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: auto;
+    max-height: calc(100vh - 100px);
+  }
+  canvas {
+    display: block;
+    cursor: crosshair;
+  }
+  .sidebar {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 14px;
+    font-size: 13px;
+  }
+  .sidebar h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 6px;
+  }
+  .sidebar > section { margin-bottom: 16px; }
+  .row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .row label { width: 90px; font-size: 12px; color: #555; }
+  .row input[type="number"] {
+    flex: 1;
+    width: 60px;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .row input[type="range"] { flex: 1; }
+  .info {
+    font-family: monospace;
+    font-size: 11px;
+    color: #555;
+    padding: 6px;
+    background: #f8f8f8;
+    border-radius: 3px;
+    line-height: 1.5;
+  }
+  .legend {
+    font-size: 11px;
+    color: #555;
+    line-height: 1.6;
+    background: #fafafa;
+    padding: 8px;
+    border-radius: 3px;
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .mode-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .mode-buttons button {
+    width: 100%;
+    padding: 6px;
+    font-size: 12px;
+  }
+  .help {
+    font-size: 11px;
+    color: #777;
+    line-height: 1.5;
+    padding: 6px;
+    background: #fffbe6;
+    border-left: 3px solid #f0ad4e;
+    border-radius: 2px;
+  }
+  .selected-display {
+    font-family: monospace;
+    font-size: 11px;
+    background: #eef5fb;
+    padding: 6px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <label>YAML:</label>
+    <input type="file" id="yamlIn" accept=".yaml,.yml">
+  </div>
+  <div>
+    <label>Map image:</label>
+    <input type="file" id="imgIn" accept="image/png,.pgm">
+  </div>
+  <div>
+    <label>Waypoints CSV:</label>
+    <input type="file" id="csvIn" accept=".csv">
+  </div>
+  <div style="margin-left:auto;">
+    <button id="exportBtn" disabled>Export CSV</button>
+    <button class="secondary" id="undoBtn" disabled>Undo</button>
+    <button class="danger" id="deleteBtn" disabled>Delete selected</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="800" height="500"></canvas>
+  </div>
+
+  <div class="sidebar">
+    <section>
+      <h3>Mode</h3>
+      <div class="mode-buttons">
+        <button class="toggle active" id="modeSelect" data-mode="select">Select / drag</button>
+        <button class="toggle" id="modeInsert" data-mode="insert">Insert between</button>
+        <button class="toggle" id="modeAppend" data-mode="append">Append at end</button>
+        <button class="toggle" id="modeStraight" data-mode="straight">Straight line</button>
+        <button class="toggle" id="modePan" data-mode="pan">Pan view</button>
+      </div>
+      <div class="help" id="modeHelp">Click a point to select. Drag to move. Shift+click to multi-select.</div>
+      <div class="row" id="straightOptions" style="display:none;">
+        <label>Spacing (m):</label>
+        <input type="number" id="straightSpacing" step="0.05" value="0.30" min="0.05">
+      </div>
+    </section>
+
+    <section>
+      <h3>View</h3>
+      <div class="row">
+        <label>Color by:</label>
+        <select id="colorBy" style="flex:1; padding:4px;">
+          <option value="velocity">Velocity</option>
+          <option value="lookahead">Lookahead</option>
+          <option value="index">Index (rainbow)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Zoom:</label>
+        <input type="range" id="zoomSlider" min="0.5" max="6" step="0.1" value="1.5">
+        <span id="zoomVal" style="font-size:11px; min-width:32px;">1.5×</span>
+      </div>
+      <div class="row">
+        <label>Pt size:</label>
+        <input type="range" id="pointSize" min="2" max="12" step="1" value="5">
+      </div>
+    </section>
+
+    <section>
+      <h3>Selected point(s)</h3>
+      <div class="selected-display" id="selDisplay">No selection</div>
+      <div class="row">
+        <label>x (m):</label>
+        <input type="number" id="editX" step="0.01" disabled>
+      </div>
+      <div class="row">
+        <label>y (m):</label>
+        <input type="number" id="editY" step="0.01" disabled>
+      </div>
+      <div class="row">
+        <label>velocity:</label>
+        <input type="number" id="editV" step="0.1" disabled>
+      </div>
+      <div class="row">
+        <label>lookahead:</label>
+        <input type="number" id="editL" step="0.1" disabled>
+      </div>
+      <button id="applyEdit" style="width:100%; margin-top:4px;" disabled>Apply</button>
+    </section>
+
+    <section>
+      <h3>Bulk edit selection</h3>
+      <div class="row">
+        <label>Set v to:</label>
+        <input type="number" id="bulkV" step="0.1" placeholder="m/s">
+        <button id="bulkVApply" style="padding:4px 8px; font-size:11px;">Set</button>
+      </div>
+      <div class="row">
+        <label>Set L to:</label>
+        <input type="number" id="bulkL" step="0.1" placeholder="m">
+        <button id="bulkLApply" style="padding:4px 8px; font-size:11px;">Set</button>
+      </div>
+      <div class="row">
+        <label>v scale ×:</label>
+        <input type="number" id="bulkVScale" step="0.05" value="1.0">
+        <button id="bulkVScaleApply" style="padding:4px 8px; font-size:11px;">Apply</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Status</h3>
+      <div class="info" id="statusText">Load a YAML, an image, and a CSV to get started.</div>
+    </section>
+
+    <section>
+      <h3>Legend</h3>
+      <div class="legend">
+        <div><span class="swatch" style="background:#cc0000;"></span>Selected point</div>
+        <div><span class="swatch" style="background:#00cc00;"></span>Hovered point</div>
+        <div><span class="swatch" style="background:#0066cc;"></span>Insert preview</div>
+        <div style="margin-top:6px;">
+          Color = velocity (red slow, green fast)<br>
+          or lookahead (purple short, yellow long)
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let mapImage = null;
+let resolution = 0.05;
+let origin = [0, 0, 0];
+let waypoints = [];   // array of {x, y, v, lookahead}
+let history = [];     // for undo: array of [snapshot]
+const HISTORY_MAX = 50;
+
+let selected = new Set();   // Set of indices
+let hoverIdx = -1;
+let mode = 'select';        // select | insert | append | pan
+
+let isDragging = false;
+let isPanning = false;
+let panStart = null;
+let dragStart = null;
+let viewOffset = { x: 0, y: 0 };  // pixel offset in world→canvas mapping
+
+// Zoom: pixels-per-metre. Computed from canvas size and image extent on load,
+// then user-scalable.
+let baseZoom = 1.0;
+let userZoom = 1.5;
+
+let pointSize = 5;
+let colorMode = 'velocity';
+
+// Straight-line mode state
+let straightAnchor = null;   // {idx: i} if snapped to existing pt, or {wx, wy} if free
+let straightPreview = null;  // {wx, wy} of mouse during second-click hover
+
+// V/L ranges for color mapping (auto-computed from data)
+let vMin = 2.0, vMax = 6.0, lMin = 0.6, lMax = 3.2;
+
+// ── History helpers ──────────────────────────────────────────────────────
+function pushHistory() {
+  history.push(JSON.stringify(waypoints));
+  if (history.length > HISTORY_MAX) history.shift();
+  document.getElementById('undoBtn').disabled = history.length === 0;
+}
+function undo() {
+  if (history.length === 0) return;
+  waypoints = JSON.parse(history.pop());
+  selected.clear();
+  document.getElementById('undoBtn').disabled = history.length === 0;
+  updateUI();
+  redraw();
+}
+
+// ── File loading ─────────────────────────────────────────────────────────
+document.getElementById('yamlIn').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    const t = r.result;
+    const resM = t.match(/resolution:\s*([\d.]+)/);
+    const orgM = t.match(/origin:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]/);
+    if (resM) resolution = parseFloat(resM[1]);
+    if (orgM) origin = [parseFloat(orgM[1]), parseFloat(orgM[2]), parseFloat(orgM[3])];
+    setStatus(`YAML loaded — res ${resolution} m/px, origin (${origin[0]}, ${origin[1]})`);
+    fitView();
+    redraw();
+  };
+  r.readAsText(f);
+});
+
+document.getElementById('imgIn').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      mapImage = img;
+      setStatus(`Image loaded — ${img.width}×${img.height} px`);
+      fitView();
+      redraw();
+    };
+    img.src = r.result;
+  };
+  r.readAsDataURL(f);
+});
+
+document.getElementById('csvIn').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    parseCSV(r.result);
+    setStatus(`CSV loaded — ${waypoints.length} waypoints`);
+    document.getElementById('exportBtn').disabled = waypoints.length === 0;
+    autoRanges();
+    redraw();
+  };
+  r.readAsText(f);
+});
+
+function parseCSV(text) {
+  waypoints = [];
+  const lines = text.split(/\r?\n/);
+  let firstChecked = false;
+  for (const ln of lines) {
+    const line = ln.trim();
+    if (!line) continue;
+    const parts = line.split(',').map(s => s.trim());
+    if (!firstChecked) {
+      firstChecked = true;
+      // Skip header row
+      if (isNaN(parseFloat(parts[0]))) continue;
+    }
+    if (parts.length < 2) continue;
+    const x = parseFloat(parts[0]);
+    const y = parseFloat(parts[1]);
+    const v = parts.length >= 3 ? parseFloat(parts[2]) : 1.0;
+    const l = parts.length >= 4 ? parseFloat(parts[3]) : 1.5;
+    if (isFinite(x) && isFinite(y)) {
+      waypoints.push({ x, y, v: isFinite(v) ? v : 1.0, lookahead: isFinite(l) ? l : 1.5 });
+    }
+  }
+}
+
+function autoRanges() {
+  if (waypoints.length === 0) return;
+  const vs = waypoints.map(p => p.v);
+  const ls = waypoints.map(p => p.lookahead);
+  vMin = Math.min(...vs); vMax = Math.max(...vs);
+  lMin = Math.min(...ls); lMax = Math.max(...ls);
+  if (vMax - vMin < 0.1) { vMin = vMin - 0.5; vMax = vMax + 0.5; }
+  if (lMax - lMin < 0.1) { lMin = lMin - 0.5; lMax = lMax + 0.5; }
+}
+
+// ── World ↔ canvas transforms ────────────────────────────────────────────
+function fitView() {
+  if (!mapImage) return;
+  const cw = canvas.parentElement.clientWidth - 4;
+  const ch = canvas.parentElement.clientHeight - 4;
+  canvas.width = Math.max(800, cw);
+  canvas.height = Math.max(500, ch);
+  // Pixels per metre that fits the whole image
+  const pxPerM_x = canvas.width / (mapImage.width * resolution);
+  const pxPerM_y = canvas.height / (mapImage.height * resolution);
+  baseZoom = Math.min(pxPerM_x, pxPerM_y);
+  viewOffset = { x: 0, y: 0 };
+  // Update zoom slider readout
+  document.getElementById('zoomVal').innerText = userZoom.toFixed(1) + '×';
+}
+
+function zoom() { return baseZoom * userZoom; }
+
+function worldToCanvas(wx, wy) {
+  // Image origin is in world coords at the lower-left of the image.
+  // Canvas y goes down, world y goes up.
+  const z = zoom();
+  const px = (wx - origin[0]) * z + viewOffset.x;
+  const imgWorldH = mapImage ? mapImage.height * resolution : 0;
+  const py = (origin[1] + imgWorldH - wy) * z + viewOffset.y;
+  return [px, py];
+}
+function canvasToWorld(cx, cy) {
+  const z = zoom();
+  const wx = (cx - viewOffset.x) / z + origin[0];
+  const imgWorldH = mapImage ? mapImage.height * resolution : 0;
+  const wy = origin[1] + imgWorldH - (cy - viewOffset.y) / z;
+  return [wx, wy];
+}
+
+// ── Color mapping ────────────────────────────────────────────────────────
+function colorFor(idx) {
+  const p = waypoints[idx];
+  let t;
+  if (colorMode === 'velocity') {
+    t = (p.v - vMin) / (vMax - vMin || 1);
+    t = Math.max(0, Math.min(1, t));
+    return rdylgn(t);
+  } else if (colorMode === 'lookahead') {
+    t = (p.lookahead - lMin) / (lMax - lMin || 1);
+    t = Math.max(0, Math.min(1, t));
+    return viridis(t);
+  } else {
+    return hslRainbow(idx / waypoints.length);
+  }
+}
+function rdylgn(t) {
+  // 0 = red, 0.5 = yellow, 1 = green
+  if (t < 0.5) {
+    const u = t * 2;
+    return `rgb(${Math.round(220)}, ${Math.round(50 + u * 180)}, ${Math.round(50)})`;
+  } else {
+    const u = (t - 0.5) * 2;
+    return `rgb(${Math.round(220 - u * 170)}, ${Math.round(220 - u * 30)}, ${Math.round(50)})`;
+  }
+}
+function viridis(t) {
+  // approximate: 0 = purple, 0.5 = teal, 1 = yellow
+  const r = Math.round(68 + t * 187);
+  const g = Math.round(1 + t * 230);
+  const b = Math.round(84 + (1 - t) * 100 - t * 50);
+  return `rgb(${r}, ${Math.max(0,g)}, ${Math.max(0,Math.min(255,b))})`;
+}
+function hslRainbow(t) {
+  return `hsl(${Math.round(t * 300)}, 70%, 50%)`;
+}
+
+// ── Drawing ──────────────────────────────────────────────────────────────
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (mapImage) {
+    const [tlx, tly] = worldToCanvas(origin[0], origin[1] + mapImage.height * resolution);
+    ctx.drawImage(
+      mapImage,
+      tlx, tly,
+      mapImage.width * resolution * zoom(),
+      mapImage.height * resolution * zoom()
+    );
+  }
+  if (waypoints.length === 0) return;
+
+  // Path line (thin, neutral)
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(60, 60, 60, 0.5)';
+  ctx.beginPath();
+  for (let i = 0; i < waypoints.length; i++) {
+    const [px, py] = worldToCanvas(waypoints[i].x, waypoints[i].y);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  // Close loop if endpoints are close
+  const d0 = Math.hypot(waypoints[0].x - waypoints.at(-1).x, waypoints[0].y - waypoints.at(-1).y);
+  if (d0 < 1.5) {
+    const [px, py] = worldToCanvas(waypoints[0].x, waypoints[0].y);
+    ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Points colored by mode
+  for (let i = 0; i < waypoints.length; i++) {
+    const [px, py] = worldToCanvas(waypoints[i].x, waypoints[i].y);
+    ctx.fillStyle = colorFor(i);
+    ctx.beginPath();
+    ctx.arc(px, py, pointSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.stroke();
+  }
+
+  // Selected highlight
+  for (const i of selected) {
+    if (i < 0 || i >= waypoints.length) continue;
+    const [px, py] = worldToCanvas(waypoints[i].x, waypoints[i].y);
+    ctx.strokeStyle = '#cc0000';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(px, py, pointSize + 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Hover ring
+  if (hoverIdx >= 0 && hoverIdx < waypoints.length) {
+    const [px, py] = worldToCanvas(waypoints[hoverIdx].x, waypoints[hoverIdx].y);
+    ctx.strokeStyle = '#00aa00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, pointSize + 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Index label on selected single point
+  if (selected.size === 1) {
+    const idx = [...selected][0];
+    const [px, py] = worldToCanvas(waypoints[idx].x, waypoints[idx].y);
+    ctx.fillStyle = '#000';
+    ctx.font = '11px monospace';
+    ctx.fillText(`#${idx}`, px + pointSize + 6, py - pointSize - 2);
+  }
+
+  // Straight-line mode: anchor highlight + rubber-band dashed preview
+  if (mode === 'straight' && straightAnchor) {
+    const [ax, ay] = worldToCanvas(straightAnchor.wx, straightAnchor.wy);
+    ctx.fillStyle = '#ff6600';
+    ctx.beginPath();
+    ctx.arc(ax, ay, pointSize + 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (straightPreview) {
+      const [bx, by] = worldToCanvas(straightPreview.wx, straightPreview.wy);
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255, 102, 0, 0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 5]);
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Show point preview dots at the chosen spacing
+      const spacing = parseFloat(document.getElementById('straightSpacing').value) || 0.30;
+      const dx = straightPreview.wx - straightAnchor.wx;
+      const dy = straightPreview.wy - straightAnchor.wy;
+      const dist = Math.hypot(dx, dy);
+      const nSteps = Math.max(1, Math.round(dist / spacing));
+      ctx.fillStyle = 'rgba(255, 102, 0, 0.9)';
+      for (let i = 1; i < nSteps; i++) {
+        const t = i / nSteps;
+        const [px, py] = worldToCanvas(
+          straightAnchor.wx + t * dx,
+          straightAnchor.wy + t * dy
+        );
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(2, pointSize - 1), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// ── Hit testing ──────────────────────────────────────────────────────────
+function pickPoint(cx, cy, radius = null) {
+  const r = radius == null ? pointSize + 4 : radius;
+  let best = -1, bestD = r * r;
+  for (let i = 0; i < waypoints.length; i++) {
+    const [px, py] = worldToCanvas(waypoints[i].x, waypoints[i].y);
+    const d = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function pickSegment(cx, cy) {
+  // Returns the index `i` such that the click is closest to the segment
+  // between waypoints[i] and waypoints[i+1] (or 0 if wrap).
+  let best = -1, bestD = 25 * 25;
+  const n = waypoints.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (j === 0 && Math.hypot(
+        waypoints[0].x - waypoints[n - 1].x,
+        waypoints[0].y - waypoints[n - 1].y) > 1.5) continue;
+    const [ax, ay] = worldToCanvas(waypoints[i].x, waypoints[i].y);
+    const [bx, by] = worldToCanvas(waypoints[j].x, waypoints[j].y);
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1) continue;
+    const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / len2));
+    const px = ax + t * dx, py = ay + t * dy;
+    const d = (cx - px) * (cx - px) + (cy - py) * (cy - py);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+// ── Straight line builder ────────────────────────────────────────────────
+function buildStraight(a, b) {
+  const spacing = parseFloat(document.getElementById('straightSpacing').value) || 0.30;
+  const dx = b.wx - a.wx, dy = b.wy - a.wy;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) {
+    setStatus('Endpoints are the same — straight line skipped.');
+    return;
+  }
+  const nSteps = Math.max(1, Math.round(dist / spacing));
+  pushHistory();
+
+  // Pick velocity / lookahead defaults — average of the two endpoints if both
+  // are existing waypoints, otherwise inherit from whichever is.
+  let vStart, vEnd, lStart, lEnd;
+  if (a.idx != null && b.idx != null) {
+    vStart = waypoints[a.idx].v; vEnd = waypoints[b.idx].v;
+    lStart = waypoints[a.idx].lookahead; lEnd = waypoints[b.idx].lookahead;
+  } else if (a.idx != null) {
+    vStart = vEnd = waypoints[a.idx].v;
+    lStart = lEnd = waypoints[a.idx].lookahead;
+  } else if (b.idx != null) {
+    vStart = vEnd = waypoints[b.idx].v;
+    lStart = lEnd = waypoints[b.idx].lookahead;
+  } else {
+    // No existing waypoints to inherit from — use neutral defaults
+    vStart = vEnd = 3.0;
+    lStart = lEnd = 1.5;
+  }
+
+  // Build the new points (linearly interpolated v and lookahead)
+  // INCLUDE the endpoints by default so we get nSteps+1 total points.
+  // We'll selectively skip them if they correspond to existing waypoints.
+  const newPts = [];
+  for (let i = 0; i <= nSteps; i++) {
+    const t = i / nSteps;
+    newPts.push({
+      x: a.wx + t * dx,
+      y: a.wy + t * dy,
+      v: vStart + t * (vEnd - vStart),
+      lookahead: lStart + t * (lEnd - lStart),
+    });
+  }
+
+  // Decide where to splice in the path. Three cases:
+  //  1. Both endpoints are existing waypoints → REPLACE the segment between
+  //     them (drop everything from a.idx+1 .. b.idx-1 inclusive, replace
+  //     with newPts[1..nSteps-1] keeping the original endpoints in place).
+  //  2. Only one is existing → INSERT the straight starting from / ending at
+  //     that waypoint, like in the "insert between" workflow.
+  //  3. Neither is existing → APPEND the straight at the end of the path
+  //     (it's a brand new disconnected segment — user can move things later).
+  let action = '';
+  if (a.idx != null && b.idx != null) {
+    // Determine forward direction along the path. If the path is closed and
+    // b is "behind" a by index, we still want to replace the SHORTER arc by
+    // default (most intuitive — the user clicked the two ends of one straight).
+    const n = waypoints.length;
+    const isClosed = n >= 3 && Math.hypot(
+      waypoints[0].x - waypoints[n - 1].x,
+      waypoints[0].y - waypoints[n - 1].y) < 1.5;
+
+    let lo, hi, forward;
+    if (a.idx < b.idx) {
+      const forwardLen = b.idx - a.idx;
+      const backwardLen = isClosed ? (n - forwardLen) : Infinity;
+      if (forwardLen <= backwardLen) {
+        lo = a.idx; hi = b.idx; forward = true;
+      } else {
+        lo = b.idx; hi = a.idx; forward = false;
+      }
+    } else if (a.idx > b.idx) {
+      const forwardLen = a.idx - b.idx;
+      const backwardLen = isClosed ? (n - forwardLen) : Infinity;
+      if (forwardLen <= backwardLen) {
+        lo = b.idx; hi = a.idx; forward = false;
+      } else {
+        lo = a.idx; hi = b.idx; forward = true;
+      }
+    } else {
+      setStatus('Both endpoints are the same waypoint — skipping.');
+      return;
+    }
+
+    // The straight segment we'll insert goes from waypoints[lo] to waypoints[hi]
+    // (in path-index order, regardless of which the user clicked first).
+    // We need newPts oriented from lo→hi.
+    const ptsLoToHi = forward ? newPts : newPts.slice().reverse();
+
+    if (lo + 1 < hi) {
+      // Inner indices to remove
+      const removeCount = hi - lo - 1;
+      // Replace inner with newPts[1..nSteps-1] (skip first/last to keep
+      // original endpoint waypoints intact)
+      const inner = ptsLoToHi.slice(1, ptsLoToHi.length - 1);
+      waypoints.splice(lo + 1, removeCount, ...inner);
+      action = `Replaced ${removeCount} points between #${lo} and #${hi} ` +
+               `with ${inner.length} straight points.`;
+      // Select the new range
+      selected.clear();
+      for (let k = 0; k < inner.length; k++) selected.add(lo + 1 + k);
+    } else if (hi === lo + 1 || (isClosed && lo === 0 && hi === n - 1)) {
+      // Endpoints are already adjacent (or wrap-around adjacent on closed
+      // loop) — just splice the inner points in.
+      const inner = ptsLoToHi.slice(1, ptsLoToHi.length - 1);
+      waypoints.splice(lo + 1, 0, ...inner);
+      action = `Inserted ${inner.length} straight points between #${lo} and #${hi}.`;
+      selected.clear();
+      for (let k = 0; k < inner.length; k++) selected.add(lo + 1 + k);
+    }
+  } else if (a.idx != null && b.idx == null) {
+    // Anchor existing, endpoint free — insert all new points after a.idx
+    const inner = newPts.slice(1);   // skip the anchor itself (already exists)
+    waypoints.splice(a.idx + 1, 0, ...inner);
+    action = `Inserted straight of ${inner.length} points after #${a.idx}.`;
+    selected.clear();
+    for (let k = 0; k < inner.length; k++) selected.add(a.idx + 1 + k);
+  } else if (a.idx == null && b.idx != null) {
+    // Anchor free, endpoint existing — insert all new points before b.idx
+    const inner = newPts.slice(0, -1);  // skip the endpoint itself
+    waypoints.splice(b.idx, 0, ...inner);
+    action = `Inserted straight of ${inner.length} points before #${b.idx + inner.length}.`;
+    selected.clear();
+    for (let k = 0; k < inner.length; k++) selected.add(b.idx + k);
+  } else {
+    // Neither existing — append the whole straight to the path
+    for (const p of newPts) waypoints.push(p);
+    action = `Appended new ${newPts.length}-point straight at end of path.`;
+    selected.clear();
+    for (let k = waypoints.length - newPts.length; k < waypoints.length; k++) selected.add(k);
+  }
+
+  document.getElementById('exportBtn').disabled = waypoints.length === 0;
+  autoRanges();
+  updateEditPanel();
+  setStatus(action);
+}
+
+// ── Mouse interaction ────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  if (mode === 'pan' || e.button === 1 || (e.button === 0 && e.altKey)) {
+    isPanning = true;
+    panStart = { x: cx, y: cy, ox: viewOffset.x, oy: viewOffset.y };
+    return;
+  }
+  if (waypoints.length === 0 && mode !== 'append') return;
+
+  if (mode === 'select') {
+    const idx = pickPoint(cx, cy);
+    if (idx >= 0) {
+      if (e.shiftKey) {
+        if (selected.has(idx)) selected.delete(idx); else selected.add(idx);
+      } else if (!selected.has(idx)) {
+        selected.clear();
+        selected.add(idx);
+      }
+      isDragging = true;
+      pushHistory();
+      const [wx, wy] = canvasToWorld(cx, cy);
+      dragStart = { wx, wy, originals: [...selected].map(i => ({ idx: i, x: waypoints[i].x, y: waypoints[i].y })) };
+      updateEditPanel();
+      redraw();
+    } else if (!e.shiftKey) {
+      selected.clear();
+      updateEditPanel();
+      redraw();
+    }
+  } else if (mode === 'insert') {
+    const segIdx = pickSegment(cx, cy);
+    if (segIdx >= 0) {
+      pushHistory();
+      const [wx, wy] = canvasToWorld(cx, cy);
+      // Inherit velocity / lookahead by averaging the two segment endpoints
+      const a = waypoints[segIdx];
+      const b = waypoints[(segIdx + 1) % waypoints.length];
+      waypoints.splice(segIdx + 1, 0, {
+        x: wx, y: wy,
+        v: (a.v + b.v) / 2,
+        lookahead: (a.lookahead + b.lookahead) / 2,
+      });
+      selected.clear();
+      selected.add(segIdx + 1);
+      updateEditPanel();
+      redraw();
+      setStatus(`Inserted point at index ${segIdx + 1}. Total: ${waypoints.length}`);
+    }
+  } else if (mode === 'append') {
+    pushHistory();
+    const [wx, wy] = canvasToWorld(cx, cy);
+    const last = waypoints.length > 0 ? waypoints[waypoints.length - 1] : { v: 3.0, lookahead: 1.5 };
+    waypoints.push({ x: wx, y: wy, v: last.v, lookahead: last.lookahead });
+    selected.clear();
+    selected.add(waypoints.length - 1);
+    document.getElementById('exportBtn').disabled = false;
+    autoRanges();
+    updateEditPanel();
+    redraw();
+    setStatus(`Appended point. Total: ${waypoints.length}`);
+  } else if (mode === 'straight') {
+    // First click: set anchor. Snap to existing waypoint if click is near one.
+    // Second click: set endpoint, build straight line, insert into path.
+    const [wx, wy] = canvasToWorld(cx, cy);
+    const idx = pickPoint(cx, cy, pointSize + 6);
+
+    if (!straightAnchor) {
+      straightAnchor = idx >= 0
+        ? { idx, wx: waypoints[idx].x, wy: waypoints[idx].y }
+        : { idx: null, wx, wy };
+      straightPreview = { wx, wy };
+      setStatus(idx >= 0
+        ? `Anchored to existing waypoint #${idx}. Click endpoint.`
+        : `Anchor placed at (${wx.toFixed(2)}, ${wy.toFixed(2)}). Click endpoint.`);
+      redraw();
+    } else {
+      // Second click — commit the straight segment
+      const endpoint = idx >= 0
+        ? { idx, wx: waypoints[idx].x, wy: waypoints[idx].y }
+        : { idx: null, wx, wy };
+      buildStraight(straightAnchor, endpoint);
+      straightAnchor = null;
+      straightPreview = null;
+      redraw();
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  if (isPanning) {
+    viewOffset.x = panStart.ox + (cx - panStart.x);
+    viewOffset.y = panStart.oy + (cy - panStart.y);
+    redraw();
+    return;
+  }
+
+  if (isDragging && dragStart) {
+    const [wx, wy] = canvasToWorld(cx, cy);
+    const dx = wx - dragStart.wx;
+    const dy = wy - dragStart.wy;
+    for (const o of dragStart.originals) {
+      waypoints[o.idx].x = o.x + dx;
+      waypoints[o.idx].y = o.y + dy;
+    }
+    updateEditPanel();
+    redraw();
+    return;
+  }
+
+  // Hover
+  const newHover = pickPoint(cx, cy);
+  if (newHover !== hoverIdx) {
+    hoverIdx = newHover;
+    redraw();
+  }
+
+  // Straight-line preview line follows the cursor after the anchor click
+  if (mode === 'straight' && straightAnchor) {
+    const [wx, wy] = canvasToWorld(cx, cy);
+    straightPreview = { wx, wy };
+    redraw();
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  isDragging = false;
+  isPanning = false;
+  dragStart = null;
+});
+canvas.addEventListener('mouseleave', () => {
+  isDragging = false;
+  isPanning = false;
+  hoverIdx = -1;
+  redraw();
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const [wxBefore, wyBefore] = canvasToWorld(cx, cy);
+  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  userZoom = Math.max(0.3, Math.min(20, userZoom * factor));
+  document.getElementById('zoomSlider').value = userZoom;
+  document.getElementById('zoomVal').innerText = userZoom.toFixed(1) + '×';
+  // Re-anchor so the world point under the cursor stays put
+  const [pxAfter, pyAfter] = worldToCanvas(wxBefore, wyBefore);
+  viewOffset.x += cx - pxAfter;
+  viewOffset.y += cy - pyAfter;
+  redraw();
+}, { passive: false });
+
+// ── Mode buttons ─────────────────────────────────────────────────────────
+document.querySelectorAll('.mode-buttons button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll('.mode-buttons button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const helps = {
+      select: 'Click a point to select. Drag to move. Shift+click to multi-select.',
+      insert: 'Click on a path segment to insert a new waypoint there.',
+      append: 'Click anywhere to append a new waypoint at the end of the path.',
+      straight: 'Click a start point (snaps to existing waypoint), then click an end point. ' +
+                'A perfectly straight set of waypoints fills in between, replacing any existing ' +
+                'points if both endpoints are existing waypoints.',
+      pan: 'Click and drag to pan the view. Mousewheel zooms.'
+    };
+    document.getElementById('modeHelp').innerText = helps[mode];
+    canvas.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+    // Show / hide the straight-line spacing control
+    document.getElementById('straightOptions').style.display =
+      mode === 'straight' ? 'flex' : 'none';
+    // Reset any in-progress straight-line anchor when leaving the mode
+    if (mode !== 'straight') {
+      straightAnchor = null;
+      straightPreview = null;
+    }
+    redraw();
+  });
+});
+
+// ── Edit panel ───────────────────────────────────────────────────────────
+function updateEditPanel() {
+  const sel = [...selected];
+  const disp = document.getElementById('selDisplay');
+  const fields = ['editX', 'editY', 'editV', 'editL'];
+  if (sel.length === 0) {
+    disp.innerText = 'No selection';
+    fields.forEach(f => { document.getElementById(f).disabled = true; document.getElementById(f).value = ''; });
+    document.getElementById('applyEdit').disabled = true;
+    document.getElementById('deleteBtn').disabled = true;
+  } else if (sel.length === 1) {
+    const p = waypoints[sel[0]];
+    disp.innerText = `index #${sel[0]} of ${waypoints.length}\nx = ${p.x.toFixed(3)}\ny = ${p.y.toFixed(3)}\nv = ${p.v.toFixed(2)}\nL = ${p.lookahead.toFixed(2)}`;
+    document.getElementById('editX').value = p.x.toFixed(3);
+    document.getElementById('editY').value = p.y.toFixed(3);
+    document.getElementById('editV').value = p.v.toFixed(2);
+    document.getElementById('editL').value = p.lookahead.toFixed(2);
+    fields.forEach(f => document.getElementById(f).disabled = false);
+    document.getElementById('applyEdit').disabled = false;
+    document.getElementById('deleteBtn').disabled = false;
+  } else {
+    disp.innerText = `${sel.length} points selected\n(use bulk edit panel)`;
+    fields.forEach(f => { document.getElementById(f).disabled = true; document.getElementById(f).value = ''; });
+    document.getElementById('applyEdit').disabled = true;
+    document.getElementById('deleteBtn').disabled = false;
+  }
+}
+
+document.getElementById('applyEdit').addEventListener('click', () => {
+  const sel = [...selected];
+  if (sel.length !== 1) return;
+  pushHistory();
+  const i = sel[0];
+  waypoints[i].x = parseFloat(document.getElementById('editX').value);
+  waypoints[i].y = parseFloat(document.getElementById('editY').value);
+  waypoints[i].v = parseFloat(document.getElementById('editV').value);
+  waypoints[i].lookahead = parseFloat(document.getElementById('editL').value);
+  autoRanges();
+  redraw();
+});
+
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  if (selected.size === 0) return;
+  pushHistory();
+  const sorted = [...selected].sort((a, b) => b - a);
+  for (const i of sorted) waypoints.splice(i, 1);
+  selected.clear();
+  updateEditPanel();
+  redraw();
+  setStatus(`Deleted ${sorted.length} points. Total: ${waypoints.length}`);
+});
+
+document.getElementById('bulkVApply').addEventListener('click', () => {
+  const v = parseFloat(document.getElementById('bulkV').value);
+  if (!isFinite(v) || selected.size === 0) return;
+  pushHistory();
+  for (const i of selected) waypoints[i].v = v;
+  autoRanges(); updateEditPanel(); redraw();
+});
+document.getElementById('bulkLApply').addEventListener('click', () => {
+  const l = parseFloat(document.getElementById('bulkL').value);
+  if (!isFinite(l) || selected.size === 0) return;
+  pushHistory();
+  for (const i of selected) waypoints[i].lookahead = l;
+  autoRanges(); updateEditPanel(); redraw();
+});
+document.getElementById('bulkVScaleApply').addEventListener('click', () => {
+  const f = parseFloat(document.getElementById('bulkVScale').value);
+  if (!isFinite(f) || selected.size === 0) return;
+  pushHistory();
+  for (const i of selected) waypoints[i].v *= f;
+  autoRanges(); updateEditPanel(); redraw();
+});
+
+// ── Other UI ─────────────────────────────────────────────────────────────
+document.getElementById('colorBy').addEventListener('change', e => {
+  colorMode = e.target.value;
+  redraw();
+});
+document.getElementById('zoomSlider').addEventListener('input', e => {
+  userZoom = parseFloat(e.target.value);
+  document.getElementById('zoomVal').innerText = userZoom.toFixed(1) + '×';
+  redraw();
+});
+document.getElementById('pointSize').addEventListener('input', e => {
+  pointSize = parseInt(e.target.value);
+  redraw();
+});
+document.getElementById('undoBtn').addEventListener('click', undo);
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if (waypoints.length === 0) return;
+  let csv = 'x,y,velocity,lookahead\n';
+  for (const p of waypoints) {
+    csv += `${p.x.toFixed(4)},${p.y.toFixed(4)},${p.v.toFixed(3)},${p.lookahead.toFixed(3)}\n`;
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'waypoints_edited.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { document.getElementById('deleteBtn').click(); return; }
+  if (e.key === 'Escape') {
+    if (mode === 'straight' && straightAnchor) {
+      straightAnchor = null;
+      straightPreview = null;
+      setStatus('Straight-line cancelled.');
+    } else {
+      selected.clear();
+      updateEditPanel();
+    }
+    redraw();
+    return;
+  }
+  if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    selected = new Set(waypoints.map((_, i) => i));
+    updateEditPanel(); redraw();
+    return;
+  }
+  // Arrow keys nudge selected
+  const nudge = e.shiftKey ? 0.1 : 0.02;
+  let dx = 0, dy = 0;
+  if (e.key === 'ArrowLeft') dx = -nudge;
+  else if (e.key === 'ArrowRight') dx = nudge;
+  else if (e.key === 'ArrowUp') dy = nudge;
+  else if (e.key === 'ArrowDown') dy = -nudge;
+  if (dx !== 0 || dy !== 0) {
+    if (selected.size === 0) return;
+    e.preventDefault();
+    pushHistory();
+    for (const i of selected) { waypoints[i].x += dx; waypoints[i].y += dy; }
+    updateEditPanel(); redraw();
+  }
+});
+
+function setStatus(msg) {
+  document.getElementById('statusText').innerText = msg;
+}
+function updateUI() { updateEditPanel(); }
+
+// Initial state
+fitView();
+redraw();
+</script>
+</body>
+</html>
