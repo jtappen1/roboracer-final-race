@@ -1,5 +1,3 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/aWlTeX_W)
-
 # ESE 6150 — Final Race (Team 4)
 
 This README shows how the code is organized, how to run it, and how we approached each stage of the problem like capturing the raceline, tracking it, detecting obstacles, and overtaking.
